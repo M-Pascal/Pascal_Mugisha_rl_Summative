@@ -1,2 +1,2 @@
-# Pascal_Mugisha_rl_Summative
-mission project
+# Diabete Treatment Simulator
+mission based project
