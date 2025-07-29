@@ -410,7 +410,7 @@ class DiabetesTreatmentEnv(gym.Env):
         path = []
         current = start.copy()
         
-        # Move row-wise first, then column-wise (Manhattan path)
+        # Move row-wise first, then column-wise
         while current[0] != end[0]:
             if current[0] < end[0]:
                 current[0] += 1
@@ -527,7 +527,7 @@ class DiabetesTreatmentEnv(gym.Env):
         # Calculate and apply reward for this ONE treatment only
         if pos_tuple in self.grid_items:
             treatment_reward = self._get_treatment_reward(actual_treatment)
-            self.current_cycle_reward = treatment_reward  # Only one reward per cycle
+            self.current_cycle_reward = treatment_reward
             self.total_reward += treatment_reward
             
             print(f"TREATMENT COMPLETED:")
