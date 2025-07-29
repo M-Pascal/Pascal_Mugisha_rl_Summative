@@ -366,7 +366,7 @@ class DiabetesRenderer:
     
     def _draw_patient_status(self, start_y):
         """Draw patient status with icon and description."""
-        y = self._draw_section_header("Patient Status", start_y)
+        y = self._draw_section_header("Person Status", start_y)
         
         status = self.env.get_patient_status()
         
