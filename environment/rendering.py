@@ -1,822 +1,599 @@
-"""
-rendering.py - Visualization GUI Components for Diabetes Simulator
-
-This module handles all the visual rendering and user interface components
-for the diabetes treatment simulation using Pygame.
-"""
-
 import pygame
-import math
 import numpy as np
-from typing import Dict, List, Tuple, Optional
-from custom_env import DiabetesEnvironment, TeddyExpression, GlucoseState
+import os
+import math
+import time
 
-# Initialize Pygame
-pygame.init()
-
-# Constants
-SCREEN_WIDTH = 1200
-SCREEN_HEIGHT = 800
-FPS = 60
-
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-GREEN = (46, 204, 113)
-YELLOW = (241, 196, 15)
-RED = (231, 76, 60)
-BLUE = (52, 152, 219)
-GRAY = (149, 165, 166)
-LIGHT_GRAY = (236, 240, 241)
-DARK_GRAY = (52, 73, 94)
-PURPLE = (155, 89, 182)
-ORANGE = (230, 126, 34)
-LIGHT_BLUE = (174, 214, 241)
-
-class TeddyBearRenderer:
-    """Handles rendering of the animated teddy bear character"""
+class DiabetesRenderer:
+    """
+    Pygame-based renderer for the Diabetes Treatment Environment.
     
-    def __init__(self, x: int, y: int, size: int = 120):
-        self.x = x
-        self.y = y
-        self.size = size
-        self.animation_time = 0
-        self.expression = TeddyExpression.HAPPY
-        self.expression_transition = 0.0
-        
-    def update(self, expression: TeddyExpression, dt: float):
-        """Update animation and expression"""
-        self.animation_time += dt
-        
-        # Smooth expression transition
-        if self.expression != expression:
-            self.expression = expression
-            self.expression_transition = 0.0
-        else:
-            self.expression_transition = min(1.0, self.expression_transition + dt * 3)
+    Displays the simulation in 1/4 screen size with balanced left (grid) and 
+    right (info panel) sections, proper spacing, and animated elements.
+    """
     
-    def draw(self, screen: pygame.Surface):
-        """Draw the teddy bear with current expression"""
-        # Calculate animation offset
-        bob_offset = math.sin(self.animation_time * 2) * 3
-        shake_offset = 0
-        
-        if self.expression == TeddyExpression.DIZZY:
-            shake_offset = math.sin(self.animation_time * 8) * 2
-        
-        x = self.x + shake_offset
-        y = self.y + bob_offset
-        
-        # Draw shadow
-        shadow_color = (0, 0, 0, 50)
-        shadow_surface = pygame.Surface((self.size * 2, 40), pygame.SRCALPHA)
-        pygame.draw.ellipse(shadow_surface, shadow_color, (0, 10, self.size * 2, 20))
-        screen.blit(shadow_surface, (x - self.size, y + 80))
-        
-        # Draw teddy bear body
-        body_color = (139, 69, 19)
-        pygame.draw.circle(screen, body_color, (int(x), int(y + 40)), 60)
-        
-        # Draw teddy bear head
-        pygame.draw.circle(screen, body_color, (int(x), int(y)), 50)
-        
-        # Draw ears
-        pygame.draw.circle(screen, body_color, (int(x - 35), int(y - 25)), 20)
-        pygame.draw.circle(screen, body_color, (int(x + 35), int(y - 25)), 20)
-        pygame.draw.circle(screen, (160, 82, 45), (int(x - 35), int(y - 25)), 12)
-        pygame.draw.circle(screen, (160, 82, 45), (int(x + 35), int(y - 25)), 12)
-        
-        # Draw arms with slight animation
-        arm_offset = math.sin(self.animation_time) * 2
-        pygame.draw.circle(screen, body_color, (int(x - 50), int(y + 20 + arm_offset)), 25)
-        pygame.draw.circle(screen, body_color, (int(x + 50), int(y + 20 - arm_offset)), 25)
-        
-        # Draw legs
-        pygame.draw.circle(screen, body_color, (int(x - 25), int(y + 85)), 20)
-        pygame.draw.circle(screen, body_color, (int(x + 25), int(y + 85)), 20)
-        
-        # Draw face based on expression
-        self._draw_face(screen, x, y)
-        
-        # Draw snout
-        pygame.draw.circle(screen, (160, 82, 45), (int(x), int(y + 10)), 15)
-        
-        # Draw expression-specific effects
-        self._draw_expression_effects(screen, x, y)
-    
-    def _draw_face(self, screen: pygame.Surface, x: float, y: float):
-        """Draw facial features based on current expression"""
-        if self.expression == TeddyExpression.HAPPY:
-            # Happy eyes
-            pygame.draw.circle(screen, BLACK, (int(x - 15), int(y - 10)), 8)
-            pygame.draw.circle(screen, BLACK, (int(x + 15), int(y - 10)), 8)
-            pygame.draw.circle(screen, WHITE, (int(x - 12), int(y - 12)), 3)
-            pygame.draw.circle(screen, WHITE, (int(x + 18), int(y - 12)), 3)
-            # Smile
-            pygame.draw.arc(screen, BLACK, (x - 10, y + 5, 20, 15), 0, math.pi, 3)
-            
-        elif self.expression == TeddyExpression.DIZZY:
-            # Dizzy eyes (X shape)
-            pygame.draw.line(screen, BLACK, (x - 20, y - 15), (x - 10, y - 5), 3)
-            pygame.draw.line(screen, BLACK, (x - 10, y - 15), (x - 20, y - 5), 3)
-            pygame.draw.line(screen, BLACK, (x + 10, y - 15), (x + 20, y - 5), 3)
-            pygame.draw.line(screen, BLACK, (x + 20, y - 15), (x + 10, y - 5), 3)
-            # Wavy mouth
-            for i in range(5):
-                offset = math.sin(i + self.animation_time * 2) * 2
-                pygame.draw.circle(screen, BLACK, (int(x - 8 + i * 4), int(y + 15 + offset)), 2)
-                
-        elif self.expression == TeddyExpression.GRUMPY:
-            # Angry eyes
-            pygame.draw.circle(screen, BLACK, (int(x - 15), int(y - 10)), 8)
-            pygame.draw.circle(screen, BLACK, (int(x + 15), int(y - 10)), 8)
-            pygame.draw.circle(screen, RED, (int(x - 15), int(y - 10)), 6)
-            pygame.draw.circle(screen, RED, (int(x + 15), int(y - 10)), 6)
-            # Frown
-            pygame.draw.arc(screen, BLACK, (x - 10, y + 20, 20, 15), math.pi, 2 * math.pi, 3)
-            # Angry eyebrows
-            pygame.draw.line(screen, BLACK, (x - 25, y - 20), (x - 5, y - 15), 3)
-            pygame.draw.line(screen, BLACK, (x + 5, y - 15), (x + 25, y - 20), 3)
-            
-        elif self.expression == TeddyExpression.VERY_SICK:
-            # Sick eyes (spirals)
-            self._draw_spiral_eye(screen, x - 15, y - 10)
-            self._draw_spiral_eye(screen, x + 15, y - 10)
-            # Sick mouth
-            pygame.draw.ellipse(screen, BLACK, (x - 8, y + 10, 16, 8))
-            # Sick color tint
-            sick_surface = pygame.Surface((100, 100), pygame.SRCALPHA)
-            pygame.draw.circle(sick_surface, (0, 255, 0, 30), (50, 50), 50)
-            screen.blit(sick_surface, (x - 50, y - 50))
-            
-        else:  # NEUTRAL
-            # Normal eyes
-            pygame.draw.circle(screen, BLACK, (int(x - 15), int(y - 10)), 8)
-            pygame.draw.circle(screen, BLACK, (int(x + 15), int(y - 10)), 8)
-            pygame.draw.circle(screen, WHITE, (int(x - 12), int(y - 12)), 3)
-            pygame.draw.circle(screen, WHITE, (int(x + 18), int(y - 12)), 3)
-            # Straight mouth
-            pygame.draw.line(screen, BLACK, (x - 10, y + 15), (x + 10, y + 15), 3)
-    
-    def _draw_spiral_eye(self, screen: pygame.Surface, cx: float, cy: float):
-        """Draw a spiral eye for sick expression"""
-        pygame.draw.circle(screen, BLACK, (int(cx), int(cy)), 8)
-        pygame.draw.circle(screen, WHITE, (int(cx), int(cy)), 6)
-        
-        # Draw spiral
-        for i in range(10):
-            angle = i * 0.5 + self.animation_time * 2
-            radius = i * 0.5
-            x = cx + math.cos(angle) * radius
-            y = cy + math.sin(angle) * radius
-            pygame.draw.circle(screen, BLACK, (int(x), int(y)), 1)
-    
-    def _draw_expression_effects(self, screen: pygame.Surface, x: float, y: float):
-        """Draw additional effects based on expression"""
-        if self.expression == TeddyExpression.DIZZY:
-            # Draw floating stars
-            for i in range(3):
-                angle = self.animation_time + i * 2.1
-                star_x = x + math.cos(angle) * 60
-                star_y = y - 60 + math.sin(angle * 0.7) * 10
-                self._draw_star(screen, star_x, star_y, 8)
-        
-        elif self.expression == TeddyExpression.VERY_SICK:
-            # Draw sweat drops
-            for i in range(2):
-                drop_x = x + (-20 if i == 0 else 20)
-                drop_y = y - 30 + math.sin(self.animation_time * 3 + i) * 5
-                pygame.draw.circle(screen, LIGHT_BLUE, (int(drop_x), int(drop_y)), 4)
-                pygame.draw.circle(screen, BLUE, (int(drop_x), int(drop_y)), 2)
-    
-    def _draw_star(self, screen: pygame.Surface, x: float, y: float, size: int):
-        """Draw a star shape"""
-        points = []
-        for i in range(10):
-            angle = i * math.pi / 5
-            if i % 2 == 0:
-                radius = size
-            else:
-                radius = size // 2
-            point_x = x + math.cos(angle) * radius
-            point_y = y + math.sin(angle) * radius
-            points.append((point_x, point_y))
-        
-        pygame.draw.polygon(screen, YELLOW, points)
-
-class GlucoseMeterRenderer:
-    """Handles rendering of the glucose meter and related displays"""
-    
-    def __init__(self, x: int, y: int, width: int = 80, height: int = 400):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        self.glucose_level = 100.0
-        self.target_glucose = 100.0
-        self.trend = "steady"
-        self.animation_time = 0
-        
-    def update(self, state: Dict, dt: float):
-        """Update meter state"""
-        self.glucose_level = state['glucose_level']
-        self.target_glucose = state['target_glucose']
-        self.trend = state['glucose_trend']
-        self.animation_time += dt
-    
-    def draw(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw the glucose meter"""
-        # Draw meter background
-        pygame.draw.rect(screen, WHITE, (self.x, self.y, self.width, self.height))
-        pygame.draw.rect(screen, BLACK, (self.x, self.y, self.width, self.height), 3)
-        
-        # Draw target ranges as background colors
-        self._draw_target_zones(screen)
-        
-        # Draw glucose level bar
-        self._draw_glucose_bar(screen)
-        
-        # Draw scale markers
-        self._draw_scale(screen, font)
-        
-        # Draw current reading
-        self._draw_current_reading(screen, font)
-        
-        # Draw trend indicator
-        self._draw_trend_indicator(screen, font)
-    
-    def _draw_target_zones(self, screen: pygame.Surface):
-        """Draw colored zones for different glucose ranges"""
-        max_glucose = 400
-        zones = [
-            (0, 70, RED),      # Hypoglycemic
-            (70, 120, GREEN),  # Target range
-            (120, 180, YELLOW), # Elevated
-            (180, 400, RED)    # High
-        ]
-        
-        for min_val, max_val, color in zones:
-            start_y = self.y + self.height - (max_val / max_glucose * self.height)
-            zone_height = (max_val - min_val) / max_glucose * self.height
-            
-            # Create semi-transparent overlay
-            zone_surface = pygame.Surface((self.width - 6, zone_height), pygame.SRCALPHA)
-            zone_surface.fill((*color, 30))
-            screen.blit(zone_surface, (self.x + 3, start_y))
-    
-    def _draw_glucose_bar(self, screen: pygame.Surface):
-        """Draw the main glucose level bar"""
-        max_glucose = 400
-        fill_height = min(self.glucose_level / max_glucose * self.height, self.height - 6)
-        
-        # Get color based on glucose level
-        color = self._get_glucose_color()
-        
-        # Draw the bar with gradient effect
-        bar_rect = pygame.Rect(self.x + 3, self.y + self.height - fill_height - 3, 
-                              self.width - 6, fill_height)
-        pygame.draw.rect(screen, color, bar_rect)
-        
-        # Add shine effect
-        if fill_height > 10:
-            shine_rect = pygame.Rect(self.x + 5, self.y + self.height - fill_height - 1, 
-                                   self.width - 12, 6)
-            shine_color = tuple(min(255, c + 50) for c in color)
-            pygame.draw.rect(screen, shine_color, shine_rect)
-        
-        # Draw target glucose level indicator
-        target_y = self.y + self.height - (self.target_glucose / max_glucose * self.height)
-        pygame.draw.line(screen, BLACK, (self.x - 5, target_y), (self.x + self.width + 5, target_y), 2)
-        pygame.draw.polygon(screen, BLACK, [(self.x - 8, target_y - 3), (self.x - 2, target_y), (self.x - 8, target_y + 3)])
-    
-    def _draw_scale(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw scale markers and labels"""
-        max_glucose = 400
-        
-        # Major markers every 50 mg/dL
-        for glucose_val in range(0, 401, 50):
-            y_pos = self.y + self.height - (glucose_val / max_glucose * self.height)
-            
-            # Draw marker line
-            marker_length = 15 if glucose_val % 100 == 0 else 10
-            pygame.draw.line(screen, BLACK, 
-                           (self.x + self.width - marker_length, y_pos), 
-                           (self.x + self.width, y_pos), 2)
-            
-            # Draw label for major markers
-            if glucose_val % 100 == 0:
-                text = font.render(str(glucose_val), True, BLACK)
-                screen.blit(text, (self.x + self.width + 5, y_pos - 10))
-    
-    def _draw_current_reading(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw current glucose reading"""
-        # Main glucose reading
-        glucose_text = f"{int(self.glucose_level)} mg/dL"
-        text_surface = font.render(glucose_text, True, BLACK)
-        text_rect = text_surface.get_rect()
-        text_rect.centerx = self.x + self.width // 2
-        text_rect.bottom = self.y - 10
-        
-        # Background for readability
-        bg_rect = text_rect.inflate(10, 4)
-        pygame.draw.rect(screen, WHITE, bg_rect)
-        pygame.draw.rect(screen, BLACK, bg_rect, 1)
-        
-        screen.blit(text_surface, text_rect)
-        
-        # Status text
-        status_text = self._get_status_text()
-        status_color = self._get_glucose_color()
-        status_surface = font.render(status_text, True, status_color)
-        status_rect = status_surface.get_rect()
-        status_rect.centerx = self.x + self.width // 2
-        status_rect.top = text_rect.bottom + 5
-        screen.blit(status_surface, status_rect)
-    
-    def _draw_trend_indicator(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw glucose trend arrow"""
-        arrow_x = self.x + self.width + 60
-        arrow_y = self.y - 30
-        
-        if self.trend == "rising":
-            arrow_text = "⬆️"
-            color = RED
-        elif self.trend == "falling":
-            arrow_text = "⬇️"
-            color = BLUE
-        else:
-            arrow_text = "➡️"
-            color = GREEN
-        
-        # Animate the arrow
-        offset = math.sin(self.animation_time * 3) * 2
-        arrow_surface = font.render(arrow_text, True, color)
-        screen.blit(arrow_surface, (arrow_x, arrow_y + offset))
-        
-        # Trend text
-        trend_text = font.render(self.trend.upper(), True, color)
-        screen.blit(trend_text, (arrow_x, arrow_y + 25))
-    
-    def _get_glucose_color(self):
-        """Get color based on glucose level"""
-        if 70 <= self.glucose_level <= 120:
-            return GREEN
-        elif 120 < self.glucose_level <= 180:
-            return YELLOW
-        else:
-            return RED
-    
-    def _get_status_text(self):
-        """Get status text based on glucose level"""
-        glucose = self.glucose_level
-        if glucose < 50:
-            return "CRITICAL LOW"
-        elif glucose < 70:
-            return "LOW"
-        elif glucose <= 120:
-            return "NORMAL"
-        elif glucose <= 180:
-            return "ELEVATED"
-        elif glucose <= 250:
-            return "HIGH"
-        else:
-            return "CRITICAL HIGH"
-
-class ButtonRenderer:
-    """Handles rendering of interactive buttons"""
-    
-    def __init__(self, x: int, y: int, width: int, height: int, text: str, insulin_units: int):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.insulin_units = insulin_units
-        self.is_hovered = False
-        self.is_pressed = False
-        self.click_animation = 0.0
-        
-    def update(self, dt: float):
-        """Update button animations"""
-        if self.click_animation > 0:
-            self.click_animation -= dt * 5
-            self.click_animation = max(0, self.click_animation)
-    
-    def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle mouse events and return True if clicked"""
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.rect.collidepoint(event.pos):
-                self.is_pressed = True
-                self.click_animation = 1.0
-                return True
-        elif event.type == pygame.MOUSEBUTTONUP:
-            self.is_pressed = False
-        elif event.type == pygame.MOUSEMOTION:
-            self.is_hovered = self.rect.collidepoint(event.pos)
-        
-        return False
-    
-    def draw(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw the button with animations"""
-        # Calculate visual effects
-        scale = 0.95 if self.is_pressed else 1.0
-        if self.click_animation > 0:
-            scale -= self.click_animation * 0.1
-        
-        # Calculate button rect with scaling
-        scaled_width = int(self.rect.width * scale)
-        scaled_height = int(self.rect.height * scale)
-        scaled_x = self.rect.centerx - scaled_width // 2
-        scaled_y = self.rect.centery - scaled_height // 2
-        scaled_rect = pygame.Rect(scaled_x, scaled_y, scaled_width, scaled_height)
-        
-        # Choose colors
-        if self.is_pressed:
-            bg_color = GRAY
-            border_color = DARK_GRAY
-        elif self.is_hovered:
-            bg_color = LIGHT_GRAY
-            border_color = BLUE
-        else:
-            bg_color = WHITE
-            border_color = BLACK
-        
-        # Draw button
-        pygame.draw.rect(screen, bg_color, scaled_rect)
-        pygame.draw.rect(screen, border_color, scaled_rect, 3)
-        
-        # Add glow effect if hovered
-        if self.is_hovered:
-            glow_rect = scaled_rect.inflate(6, 6)
-            glow_surface = pygame.Surface((glow_rect.width, glow_rect.height), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surface, (*BLUE, 30), glow_surface.get_rect())
-            screen.blit(glow_surface, glow_rect.topleft)
-        
-        # Draw text
-        text_color = WHITE if self.is_pressed else BLACK
-        text_surface = font.render(self.text, True, text_color)
-        text_rect = text_surface.get_rect(center=scaled_rect.center)
-        screen.blit(text_surface, text_rect)
-        
-        # Draw insulin icon
-        if self.insulin_units > 0:
-            icon_x = scaled_rect.right - 15
-            icon_y = scaled_rect.top + 5
-            pygame.draw.circle(screen, BLUE, (icon_x, icon_y), 4)
-            pygame.draw.rect(screen, BLUE, (icon_x - 2, icon_y - 8, 4, 6))
-
-class HistoryGraphRenderer:
-    """Renders glucose history graph"""
-    
-    def __init__(self, x: int, y: int, width: int, height: int):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        self.glucose_history = []
-        
-    def update(self, glucose_history: List[float]):
-        """Update glucose history data"""
-        self.glucose_history = glucose_history[-100:]  # Keep last 100 points
-    
-    def draw(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw the glucose history graph"""
-        # Draw background
-        pygame.draw.rect(screen, WHITE, (self.x, self.y, self.width, self.height))
-        pygame.draw.rect(screen, BLACK, (self.x, self.y, self.width, self.height), 2)
-        
-        if len(self.glucose_history) < 2:
-            return
-        
-        # Draw target range
-        self._draw_target_range(screen)
-        
-        # Draw glucose line
-        self._draw_glucose_line(screen)
-        
-        # Draw title
-        title = font.render("Glucose History", True, BLACK)
-        screen.blit(title, (self.x + 5, self.y - 25))
-    
-    def _draw_target_range(self, screen: pygame.Surface):
-        """Draw target glucose range as background"""
-        min_glucose, max_glucose = 50, 300
-        target_min, target_max = 70, 120
-        
-        # Calculate positions
-        range_top = self.y + (1 - (target_max - min_glucose) / (max_glucose - min_glucose)) * self.height
-        range_bottom = self.y + (1 - (target_min - min_glucose) / (max_glucose - min_glucose)) * self.height
-        range_height = range_bottom - range_top
-        
-        # Draw target range
-        target_surface = pygame.Surface((self.width - 4, range_height), pygame.SRCALPHA)
-        target_surface.fill((*GREEN, 50))
-        screen.blit(target_surface, (self.x + 2, range_top))
-    
-    def _draw_glucose_line(self, screen: pygame.Surface):
-        """Draw the glucose level line graph"""
-        if len(self.glucose_history) < 2:
-            return
-        
-        min_glucose, max_glucose = 50, 300
-        points = []
-        
-        for i, glucose in enumerate(self.glucose_history):
-            x = self.x + (i / (len(self.glucose_history) - 1)) * (self.width - 4) + 2
-            y = self.y + (1 - (glucose - min_glucose) / (max_glucose - min_glucose)) * (self.height - 4) + 2
-            y = max(self.y + 2, min(self.y + self.height - 2, y))
-            points.append((x, y))
-        
-        # Draw line
-        if len(points) > 1:
-            pygame.draw.lines(screen, RED, False, points, 3)
-        
-        # Draw current point
-        if points:
-            pygame.draw.circle(screen, RED, (int(points[-1][0]), int(points[-1][1])), 5)
-            pygame.draw.circle(screen, WHITE, (int(points[-1][0]), int(points[-1][1])), 3)
-
-class NotificationRenderer:
-    """Handles rendering of notifications and alerts"""
-    
-    def __init__(self):
-        self.notifications = []
-        
-    def add_notification(self, text: str, color: Tuple[int, int, int] = BLACK, duration: float = 3.0):
-        """Add a new notification"""
-        self.notifications.append({
-            'text': text,
-            'color': color,
-            'duration': duration,
-            'time_left': duration,
-            'alpha': 255
-        })
-    
-    def update(self, dt: float):
-        """Update notifications"""
-        for notification in self.notifications[:]:
-            notification['time_left'] -= dt
-            
-            # Fade out in last second
-            if notification['time_left'] < 1.0:
-                notification['alpha'] = int(255 * notification['time_left'])
-            
-            # Remove expired notifications
-            if notification['time_left'] <= 0:
-                self.notifications.remove(notification)
-    
-    def draw(self, screen: pygame.Surface, font: pygame.font.Font):
-        """Draw all active notifications"""
-        y_offset = 50
-        
-        for notification in self.notifications:
-            # Create text surface with alpha
-            text_surface = font.render(notification['text'], True, notification['color'])
-            
-            if notification['alpha'] < 255:
-                # Apply alpha to surface
-                alpha_surface = pygame.Surface(text_surface.get_size(), pygame.SRCALPHA)
-                alpha_surface.fill((255, 255, 255, notification['alpha']))
-                text_surface.blit(alpha_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            
-            # Draw background
-            text_rect = text_surface.get_rect()
-            text_rect.centerx = SCREEN_WIDTH // 2
-            text_rect.y = y_offset
-            
-            bg_rect = text_rect.inflate(20, 10)
-            bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
-            bg_surface.fill((255, 255, 255, min(200, notification['alpha'])))
-            screen.blit(bg_surface, bg_rect)
-            
-            pygame.draw.rect(screen, notification['color'], bg_rect, 2)
-            screen.blit(text_surface, text_rect)
-            
-            y_offset += 40
-
-class DiabetesSimulatorGUI:
-    """Main GUI class that orchestrates all rendering components"""
-    
-    def __init__(self):
-        # Initialize Pygame
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Diabetes Treatment Simulator")
-        self.clock = pygame.time.Clock()
-        
-        # Initialize environment
-        self.env = DiabetesEnvironment()
-        
-        # Initialize fonts
-        self.font = pygame.font.Font(None, 24)
-        self.title_font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 20)
-        self.large_font = pygame.font.Font(None, 48)
-        
-        # Initialize renderers
-        self.teddy_renderer = TeddyBearRenderer(250, 300)
-        self.glucose_meter = GlucoseMeterRenderer(900, 150)
-        self.history_graph = HistoryGraphRenderer(500, 450, 400, 200)
-        self.notification_renderer = NotificationRenderer()
-        
-        # Initialize buttons
-        self.buttons = [
-            ButtonRenderer(50, 500, 100, 60, "0 Units", 0),
-            ButtonRenderer(170, 500, 100, 60, "2 Units", 2),
-            ButtonRenderer(290, 500, 100, 60, "5 Units", 5),
-            ButtonRenderer(410, 500, 100, 60, "10 Units", 10)
-        ]
-        
-        # Game state
-        self.running = True
-        self.last_meal_notification = 0
-        self.last_insulin_dose = 0
-        
-    def handle_events(self):
-        """Handle all pygame events"""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            
-            # Handle button clicks
-            for button in self.buttons:
-                if button.handle_event(event):
-                    # Administer insulin
-                    state, reward, done = self.env.step(button.insulin_units)
-                    
-                    # Add notification
-                    if button.insulin_units > 0:
-                        self.notification_renderer.add_notification(
-                            f"Administered {button.insulin_units} units of insulin",
-                            BLUE, 2.0
-                        )
-                        self.last_insulin_dose = button.insulin_units
-                    
-                    # Check for meal events
-                    if state.get('meal_pending', False) and self.last_meal_notification < state['game_time_raw'] - 300:
-                        self.notification_renderer.add_notification(
-                            "Meal time! Glucose will rise soon", ORANGE, 3.0
-                        )
-                        self.last_meal_notification = state['game_time_raw']
-    
-    def update(self, dt: float):
-        """Update all game components"""
-        # Step environment if no input
-        state, reward, done = self.env.step(0)
-        
-        # Update renderers
-        self.teddy_renderer.update(state['teddy_expression'], dt)
-        self.glucose_meter.update(state, dt)
-        self.history_graph.update(state['glucose_history'])
-        self.notification_renderer.update(dt)
-        
-        for button in self.buttons:
-            button.update(dt)
-        
-        # Check for critical glucose levels
-        glucose = state['glucose_level']
-        if glucose < 70 and not hasattr(self, 'low_glucose_warned'):
-            self.notification_renderer.add_notification(
-                "WARNING: Low glucose detected!", RED, 4.0
-            )
-            self.low_glucose_warned = True
-        elif glucose >= 70:
-            self.low_glucose_warned = False
-        
-        if glucose > 250 and not hasattr(self, 'high_glucose_warned'):
-            self.notification_renderer.add_notification(
-                "CRITICAL: Very high glucose!", RED, 4.0
-            )
-            self.high_glucose_warned = True
-        elif glucose <= 250:
-            self.high_glucose_warned = False
-        
-        return state, done
-    
-    def draw_ui(self, state: Dict):
-        """Draw the user interface"""
-        # Clear screen
-        self.screen.fill(WHITE)
-        
-        # Draw title
-        title_text = self.title_font.render("Diabetes Treatment Simulator", True, BLACK)
-        self.screen.blit(title_text, (20, 20))
-        
-        # Draw game stats
-        stats_y = 70
-        stats = [
-            f"Score: {state['score']}",
-            f"Time: {state['game_time']}",
-            f"Time in Range: {state['time_in_range_percent']:.1f}%",
-            f"Active Insulin: {state['active_insulin']:.1f} units"
-        ]
-        
-        for i, stat in enumerate(stats):
-            color = GREEN if "Time in Range" in stat and state['time_in_range_percent'] > 70 else BLACK
-            text = self.font.render(stat, True, color)
-            self.screen.blit(text, (20, stats_y + i * 30))
-        
-        # Draw instructions
-        instructions = [
-            "Goal: Keep glucose in 70-120 mg/dL range",
-            "Click buttons to administer insulin",
-            "Watch for meal notifications",
-            "Monitor trends and teddy's expression"
-        ]
-        
-        instruction_y = 300
-        for i, instruction in enumerate(instructions):
-            text = self.small_font.render(instruction, True, DARK_GRAY)
-            self.screen.blit(text, (20, instruction_y + i * 25))
-        
-        # Draw glucose status
-        glucose_state = state['glucose_state']
-        status_messages = {
-            'very_low': ("EMERGENCY: Severe Hypoglycemia", RED),
-            'low': ("CAUTION: Low Glucose", YELLOW),
-            'normal': ("EXCELLENT: In Target Range", GREEN),
-            'elevated': ("ELEVATED: Monitor Closely", YELLOW),
-            'high': ("HIGH: Insulin Needed", RED),
-            'very_high': ("CRITICAL: Dangerous Level", RED)
+    def __init__(self, env):
+        self.env = env
+        
+        # Get screen dimensions and calculate window size
+        pygame.init()
+        info = pygame.display.Info()
+        screen_width = info.current_w
+        screen_height = info.current_h
+        
+        # Set window to a larger size to accommodate all content
+        self.window_width = screen_width // 2
+        self.window_height = int(screen_height * 0.7)  # Increased from 50% to 70% of screen height
+        
+        # Layout parameters
+        self.padding = 20
+        self.section_spacing = 15  # Reduced from 25 to fit more content
+        self.title_height = 50
+        self.content_spacing = 40  # New: spacing between left and right content
+        
+        # Grid parameters (left side)
+        available_grid_height = self.window_height - self.title_height - self.padding * 2
+        self.cell_size = min(60, available_grid_height // 7)  # Max 60px, scaled to fit
+        self.grid_width = 7 * self.cell_size
+        self.grid_height = 7 * self.cell_size
+        
+        # Side panel (right side) - with better spacing
+        self.side_panel_width = self.window_width - self.grid_width - self.padding * 2 - self.content_spacing
+        self.side_panel_height = available_grid_height
+        
+        # Initialize pygame window
+        self.screen = pygame.display.set_mode((self.window_width, self.window_height))
+        pygame.display.set_caption("Diabetes Treatment Simulation")
+        
+        # Colors
+        self.WHITE = (255, 255, 255)
+        self.BLACK = (0, 0, 0)
+        self.GRAY = (128, 128, 128)
+        self.LIGHT_GRAY = (220, 220, 220)
+        self.DARK_GRAY = (64, 64, 64)
+        self.GREEN = (0, 180, 0)
+        self.LIGHT_GREEN = (150, 255, 150)
+        self.DARK_GREEN = (0, 120, 0)
+        self.RED = (255, 0, 0)
+        self.BLUE = (0, 100, 255)
+        self.LIGHT_BLUE = (173, 216, 230)  # For flashing
+        self.ORANGE = (255, 165, 0)
+        self.YELLOW = (255, 255, 0)
+        self.PURPLE = (128, 0, 128)
+        
+        # Range colors for sugar chart
+        self.NORMAL_RANGE_COLOR = (200, 255, 200, 100)  # Light green with alpha
+        self.PERFECT_RANGE_COLOR = (150, 255, 150, 150)  # Darker green with alpha
+        self.DANGER_COLOR = (255, 200, 200, 100)  # Light red with alpha
+        
+        # Fonts
+        self.title_font = pygame.font.Font(None, 32)
+        self.subtitle_font = pygame.font.Font(None, 20)  # Reduced from 24 to 20
+        self.info_font = pygame.font.Font(None, 18)      # Reduced from 20 to 18
+        self.small_font = pygame.font.Font(None, 14)     # Reduced from 16 to 14
+        
+        # Load images
+        self.images = self._load_images()
+        
+        # Positioning
+        self.grid_x = self.padding
+        self.grid_y = self.title_height + self.padding
+        self.panel_x = self.grid_x + self.grid_width + self.content_spacing  # Updated to use content_spacing
+        self.panel_y = self.grid_y
+        
+        # Chart dimensions - adjusted for smaller panel with space for Y-axis labels
+        self.chart_width = self.side_panel_width - 45  # More space for Y-axis labels outside chart
+        self.chart_height = 100  # Reduced from 120 to 100
+        
+    def _load_images(self):
+        """Load all required images with professional fallbacks."""
+        images = {}
+        image_configs = {
+            'doctor': ('image/doctor.png', self.BLUE, 'DOC'),
+            'insulin': ('image/insulin.png', self.GREEN, 'INS'),
+            'insuline': ('image/insuline.png', self.LIGHT_GREEN, 'LOW'),
+            'stop': ('image/stop.png', self.RED, 'STP'),
+            'fruits': ('image/fruits.png', self.ORANGE, 'FRT'),
+            'candy': ('image/candy.png', self.YELLOW, 'CND'),
+            'nutrient': ('image/nutrient.png', (139, 69, 19), 'NUT'),
+            'person': ('image/person.png', self.GREEN, 'OK'),
+            'patient': ('image/patient.png', self.ORANGE, 'CHK'),
+            'died': ('image/died.png', self.RED, 'DIE')
         }
         
-        status_text, status_color = status_messages.get(glucose_state.value, ("Unknown", BLACK))
-        status_surface = self.font.render(status_text, True, status_color)
-        status_rect = status_surface.get_rect()
-        status_rect.centerx = SCREEN_WIDTH // 2
-        status_rect.y = 100
+        for name, (filepath, fallback_color, text_fallback) in image_configs.items():
+            try:
+                if os.path.exists(filepath):
+                    img = pygame.image.load(filepath)
+                    if name in ['person', 'patient', 'died']:
+                        images[name] = pygame.transform.scale(img, (60, 60))
+                    else:
+                        images[name] = pygame.transform.scale(img, (self.cell_size - 10, self.cell_size - 10))
+                else:
+                    # Create professional fallback
+                    size = 60 if name in ['person', 'patient', 'died'] else self.cell_size - 10
+                    surf = pygame.Surface((size, size))
+                    surf.fill(fallback_color)
+                    
+                    # Add border
+                    pygame.draw.rect(surf, self.BLACK, surf.get_rect(), 2)
+                    
+                    # Add text
+                    font = pygame.font.Font(None, max(16, size // 3))
+                    try:
+                        text = font.render(text_fallback, True, self.WHITE)
+                    except:
+                        text = font.render(name[:3].upper(), True, self.WHITE)
+                    
+                    text_rect = text.get_rect(center=(size//2, size//2))
+                    surf.blit(text, text_rect)
+                    images[name] = surf
+                    
+            except Exception as e:
+                print(f"Warning: Could not load {filepath}: {e}")
+                # Minimal fallback
+                size = 60 if name in ['person', 'patient', 'died'] else self.cell_size - 10
+                surf = pygame.Surface((size, size))
+                surf.fill(self.GRAY)
+                images[name] = surf
         
-        # Status background
-        bg_rect = status_rect.inflate(20, 10)
-        pygame.draw.rect(self.screen, WHITE, bg_rect)
-        pygame.draw.rect(self.screen, status_color, bg_rect, 2)
-        self.screen.blit(status_surface, status_rect)
-        
-        # Draw insulin button label
-        button_label = self.font.render("Administer Insulin:", True, BLACK)
-        self.screen.blit(button_label, (50, 470))
+        return images
     
-    def draw(self, state: Dict):
-        """Draw all components"""
-        # Draw UI elements
-        self.draw_ui(state)
+    def render(self):
+        """Main render function."""
+        # Handle pygame events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+        
+        # Clear screen
+        self.screen.fill(self.WHITE)
         
         # Draw main components
-        self.teddy_renderer.draw(self.screen)
-        self.glucose_meter.draw(self.screen, self.font)
-        self.history_graph.draw(self.screen, self.small_font)
-        
-        # Draw buttons
-        for button in self.buttons:
-            button.draw(self.screen, self.font)
-        
-        # Draw notifications
-        self.notification_renderer.draw(self.screen, self.font)
+        self._draw_title()
+        self._draw_thinking_overlay()
+        self._draw_grid()
+        self._draw_side_panel()
         
         # Update display
         pygame.display.flip()
+        
+        return True
     
-    def run(self):
-        """Main game loop"""
-        last_time = pygame.time.get_ticks()
+    def _draw_title(self):
+        """Draw the main title."""
+        title_surface = self.title_font.render("Personalized Diabetes Treatment", True, self.BLACK)
+        title_rect = title_surface.get_rect(center=(self.window_width // 2, 25))
+        self.screen.blit(title_surface, title_rect)
+    
+    def _draw_thinking_overlay(self):
+        """Draw thinking overlay when agent is deciding."""
+        if self.env.is_thinking:
+            overlay = pygame.Surface((self.window_width, self.window_height))
+            overlay.set_alpha(100)
+            overlay.fill((200, 200, 200))
+            self.screen.blit(overlay, (0, 0))
+            
+            thinking_text = self.title_font.render("THINKING...", True, self.PURPLE)
+            thinking_rect = thinking_text.get_rect(center=(self.window_width // 2, self.window_height // 2))
+            self.screen.blit(thinking_text, thinking_rect)
+    
+    def _draw_grid(self):
+        """Draw the 7x7 grid with items, agent, and flashing effects."""
+        # Grid background
+        grid_rect = pygame.Rect(self.grid_x, self.grid_y, self.grid_width, self.grid_height)
+        pygame.draw.rect(self.screen, self.LIGHT_GRAY, grid_rect)
+        pygame.draw.rect(self.screen, self.BLACK, grid_rect, 2)
         
-        while self.running:
-            # Calculate delta time
-            current_time = pygame.time.get_ticks()
-            dt = (current_time - last_time) / 1000.0
-            last_time = current_time
-            
-            # Handle events
-            self.handle_events()
-            
-            # Update game state
-            state, done = self.update(dt)
-            
-            # Draw everything
-            self.draw(state)
-            
-            # Control frame rate
-            self.clock.tick(FPS)
-            
-            # Check if simulation is complete
-            if done:
-                self.notification_renderer.add_notification(
-                    "24-hour simulation complete!", GREEN, 5.0
-                )
-                # Could add end screen here
+        # Draw cells
+        for row in range(7):
+            for col in range(7):
+                cell_x = self.grid_x + col * self.cell_size
+                cell_y = self.grid_y + row * self.cell_size
+                cell_rect = pygame.Rect(cell_x, cell_y, self.cell_size, self.cell_size)
+                
+                # Check if cell should flash
+                if self.env.should_flash_cell(row, col):
+                    pygame.draw.rect(self.screen, self.LIGHT_BLUE, cell_rect)
+                
+                # Draw cell border
+                pygame.draw.rect(self.screen, self.DARK_GRAY, cell_rect, 1)
+                
+                # Draw treatment items with colored borders
+                if (row, col) in self.env.grid_items:
+                    item_type = self.env.grid_items[(row, col)]
+                    
+                    # Colored border hint
+                    border_colors = {
+                        'insulin': self.GREEN,
+                        'insuline': self.LIGHT_GREEN,
+                        'stop': self.RED,
+                        'fruits': self.ORANGE,
+                        'nutrient': (139, 69, 19),
+                        'candy': self.YELLOW
+                    }
+                    
+                    border_color = border_colors.get(item_type, self.GRAY)
+                    pygame.draw.rect(self.screen, border_color, cell_rect, 3)
+                    
+                    # Draw item image
+                    if item_type in self.images:
+                        img_x = cell_x + 5
+                        img_y = cell_y + 5
+                        self.screen.blit(self.images[item_type], (img_x, img_y))
         
+        # Draw agent (doctor)
+        agent_x = self.grid_x + self.env.agent_pos[1] * self.cell_size + 5
+        agent_y = self.grid_y + self.env.agent_pos[0] * self.cell_size + 5
+        self.screen.blit(self.images['doctor'], (agent_x, agent_y))
+    
+    def _draw_side_panel(self):
+        """Draw the complete side panel."""
+        # Panel background
+        panel_rect = pygame.Rect(self.panel_x - 5, self.panel_y - 5, 
+                               self.side_panel_width + 10, self.side_panel_height + 10)
+        pygame.draw.rect(self.screen, (245, 245, 245), panel_rect)
+        pygame.draw.rect(self.screen, self.DARK_GRAY, panel_rect, 2)
+        
+        current_y = self.panel_y + 10
+        
+        # 1. Blood Sugar Graph
+        current_y = self._draw_sugar_graph(current_y)
+        current_y += self.section_spacing
+        
+        # 2. Patient Status
+        current_y = self._draw_patient_status(current_y)
+        current_y += self.section_spacing
+        
+        # 3. Rewards Panel
+        current_y = self._draw_rewards_panel(current_y)
+        current_y += self.section_spacing
+        
+        # 4. Current Time
+        current_y = self._draw_time_panel(current_y)
+        current_y += self.section_spacing
+        
+        # 5. Current Action
+        current_y = self._draw_current_action(current_y)
+    
+    def _draw_section_header(self, title, y):
+        """Draw a section header with underline."""
+        header_surface = self.subtitle_font.render(title, True, self.DARK_GRAY)
+        self.screen.blit(header_surface, (self.panel_x, y))
+        
+        # Underline
+        header_width = header_surface.get_width()
+        pygame.draw.line(self.screen, self.DARK_GRAY,
+                        (self.panel_x, y + 18),  # Reduced from 22 to 18
+                        (self.panel_x + header_width, y + 18), 1)
+        
+        return y + 25  # Reduced from 30 to 25
+    
+    def _draw_sugar_graph(self, start_y):
+        """Draw animated blood sugar level graph."""
+        y = self._draw_section_header("Blood Sugar Level (mg/dL)", start_y)
+        
+        # Chart area positioned with space for Y-axis labels on the left
+        chart_x = self.panel_x + 30  # Leave space for Y-axis labels
+        chart_rect = pygame.Rect(chart_x, y, self.chart_width, self.chart_height)
+        pygame.draw.rect(self.screen, self.WHITE, chart_rect)
+        pygame.draw.rect(self.screen, self.BLACK, chart_rect, 1)
+        
+        # Chart parameters
+        sugar_min, sugar_max = 0, 200  # Changed from 300 to 200
+        normal_min, normal_max = 70, 120
+        perfect_min, perfect_max = 80, 105
+        
+        def sugar_to_y(sugar_value):
+            return y + self.chart_height - int((sugar_value / sugar_max) * self.chart_height)
+        
+        # Draw danger zones (dashed lines)
+        danger_high_y = sugar_to_y(200)  # Changed from 300 to 200
+        danger_low_y = sugar_to_y(40)
+        
+        self._draw_dashed_line(chart_x, danger_high_y, 
+                              chart_x + self.chart_width, danger_high_y, self.RED)
+        self._draw_dashed_line(chart_x, danger_low_y, 
+                              chart_x + self.chart_width, danger_low_y, self.BLUE)
+        
+        # Draw range backgrounds
+        normal_y1 = sugar_to_y(normal_max)
+        normal_y2 = sugar_to_y(normal_min)
+        perfect_y1 = sugar_to_y(perfect_max)
+        perfect_y2 = sugar_to_y(perfect_min)
+        
+        # Normal range (light green band)
+        normal_rect = pygame.Rect(chart_x, normal_y1, self.chart_width, normal_y2 - normal_y1)
+        normal_surface = pygame.Surface((self.chart_width, normal_y2 - normal_y1))
+        normal_surface.set_alpha(100)
+        normal_surface.fill(self.LIGHT_GREEN)
+        self.screen.blit(normal_surface, (chart_x, normal_y1))
+        
+        # Perfect range (darker green inside)
+        perfect_rect = pygame.Rect(chart_x, perfect_y1, self.chart_width, perfect_y2 - perfect_y1)
+        perfect_surface = pygame.Surface((self.chart_width, perfect_y2 - perfect_y1))
+        perfect_surface.set_alpha(150)
+        perfect_surface.fill(self.DARK_GREEN)
+        self.screen.blit(perfect_surface, (chart_x, perfect_y1))
+        
+        # Y-axis labels (positioned outside the chart area but inside the panel)
+        for sugar_val in [0, 25, 50, 75, 100, 125, 150, 175, 200]:  # Changed scale for 0-200 range
+            label_y = sugar_to_y(sugar_val)
+            if label_y >= y and label_y <= y + self.chart_height:
+                # Draw tick mark connecting to chart
+                pygame.draw.line(self.screen, self.GRAY,
+                               (chart_x - 5, label_y), (chart_x, label_y))
+                
+                # Position labels outside the chart area
+                label_text = self.small_font.render(str(sugar_val), True, self.BLACK)
+                self.screen.blit(label_text, (chart_x - 25, label_y - 6))
+        
+        # Draw smooth sugar curve
+        if len(self.env.sugar_history) > 1:
+            points = []
+            for i, sugar in enumerate(self.env.sugar_history):
+                if len(self.env.time_history) > i:
+                    time_ratio = self.env.time_history[i] / 24.0 if self.env.time_history[i] > 0 else 0
+                    x_pos = chart_x + int(time_ratio * self.chart_width)
+                    y_pos = sugar_to_y(sugar)
+                    points.append((x_pos, y_pos))
+            
+            if len(points) > 1:
+                # Draw smooth line
+                pygame.draw.lines(self.screen, self.RED, False, points, 2)
+                
+                # Draw current point
+                if points:
+                    pygame.draw.circle(self.screen, self.RED, points[-1], 4)
+        
+        # Current sugar level display
+        current_sugar_text = self.small_font.render(f"Current Reading: {self.env.sugar_level:.1f} mg/dL", True, self.BLACK)
+        self.screen.blit(current_sugar_text, (self.panel_x, y + self.chart_height + 3))  # Reduced spacing
+        
+        return y + self.chart_height + 20  # Reduced from 25 to 20
+    
+    def _draw_dashed_line(self, x1, y1, x2, y2, color):
+        """Draw a dashed line."""
+        dash_length = 5
+        gap_length = 3
+        total_length = abs(x2 - x1)
+        
+        for i in range(0, int(total_length), dash_length + gap_length):
+            start_x = x1 + i
+            end_x = min(x1 + i + dash_length, x2)
+            if start_x < x2:
+                pygame.draw.line(self.screen, color, (start_x, y1), (end_x, y2), 2)
+    
+    def _draw_patient_status(self, start_y):
+        """Draw patient status with icon and description."""
+        y = self._draw_section_header("Patient Status", start_y)
+        
+        status = self.env.get_patient_status()
+        
+        # Status icon
+        icon_x = self.panel_x + 10
+        icon_y = y
+        
+        if status in self.images:
+            self.screen.blit(self.images[status], (icon_x, icon_y))
+        
+        # Status text with color coding
+        status_texts = {
+            'person': 'Healthy (Perfect Range)',
+            'patient': 'Needs Monitoring',
+            'died': 'CRITICAL DANGER!'
+        }
+        
+        status_colors = {
+            'person': self.DARK_GREEN,
+            'patient': self.ORANGE,
+            'died': self.RED
+        }
+        
+        status_text = status_texts.get(status, 'Unknown')
+        status_color = status_colors.get(status, self.BLACK)
+        
+        text_surface = self.info_font.render(status_text, True, status_color)
+        self.screen.blit(text_surface, (icon_x + 70, icon_y + 15))  # Reduced vertical offset
+        
+        return y + 60  # Reduced from 70 to 60
+    
+    def _draw_rewards_panel(self, start_y):
+        """Draw accumulated rewards display."""
+        y = self._draw_section_header("Rewards Panel", start_y)
+        
+        # Total rewards with color coding
+        reward_color = self.DARK_GREEN if self.env.total_reward >= 0 else self.RED
+        reward_text = self.info_font.render(f"Total Rewards: {self.env.total_reward:.1f}", True, reward_color)
+        self.screen.blit(reward_text, (self.panel_x, y))
+        
+        # Reward bar visualization
+        bar_width = self.chart_width - 15  # Reduced from 20 to 15
+        bar_height = 12  # Reduced from 15 to 12
+        bar_x = self.panel_x
+        bar_y = y + 20  # Reduced from 25 to 20
+        
+        # Background bar
+        pygame.draw.rect(self.screen, self.LIGHT_GRAY, (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(self.screen, self.BLACK, (bar_x, bar_y, bar_width, bar_height), 1)
+        
+        # Reward fill (normalized to reasonable range -100 to +100)
+        normalized_reward = max(-100, min(100, self.env.total_reward))
+        if normalized_reward != 0:
+            fill_width = int((abs(normalized_reward) / 100) * (bar_width // 2))
+            if normalized_reward > 0:
+                fill_rect = (bar_x + bar_width // 2, bar_y, fill_width, bar_height)
+                pygame.draw.rect(self.screen, self.GREEN, fill_rect)
+            else:
+                fill_rect = (bar_x + bar_width // 2 - fill_width, bar_y, fill_width, bar_height)
+                pygame.draw.rect(self.screen, self.RED, fill_rect)
+        
+        # Center line
+        center_x = bar_x + bar_width // 2
+        pygame.draw.line(self.screen, self.BLACK, (center_x, bar_y), (center_x, bar_y + bar_height), 2)
+        
+        return y + 40  # Reduced from 50 to 40
+    
+    def _draw_time_panel(self, start_y):
+        """Draw current time with progress bar."""
+        y = self._draw_section_header("Current Time", start_y)
+        
+        # Digital clock display
+        time_str = self.env.get_formatted_time()
+        time_text = self.info_font.render(f"Time: {time_str}", True, self.BLACK)
+        self.screen.blit(time_text, (self.panel_x, y))
+        
+        # Progress bar for 24-hour simulation
+        progress = min(self.env.simulation_time / 24.0, 1.0)
+        bar_width = self.chart_width - 15  # Reduced from 20 to 15
+        bar_height = 16  # Reduced from 20 to 16
+        bar_x = self.panel_x
+        bar_y = y + 20  # Reduced from 25 to 20
+        
+        # Background
+        pygame.draw.rect(self.screen, self.LIGHT_GRAY, (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(self.screen, self.BLACK, (bar_x, bar_y, bar_width, bar_height), 1)
+        
+        # Progress fill
+        if progress > 0:
+            fill_width = int(bar_width * progress)
+            pygame.draw.rect(self.screen, self.BLUE, (bar_x, bar_y, fill_width, bar_height))
+        
+        # 3-hour markers
+        for hour in range(3, 24, 3):
+            marker_x = bar_x + int((hour / 24.0) * bar_width)
+            pygame.draw.line(self.screen, self.BLACK, 
+                           (marker_x, bar_y), (marker_x, bar_y + bar_height), 2)
+        
+        # Progress percentage
+        progress_text = self.small_font.render(f"{progress*100:.1f}%", True, self.BLACK)
+        self.screen.blit(progress_text, (bar_x + bar_width + 5, bar_y + 3))  # Adjusted vertical alignment
+        
+        return y + 40  # Reduced from 50 to 40
+    
+    def _draw_current_action(self, start_y):
+        """Draw current action taken by agent."""
+        y = self._draw_section_header("Current Action Taken", start_y)
+        
+        # Get current action
+        action_text = self.env.get_current_action_text()
+        
+        # Action box with color coding
+        box_width = self.side_panel_width - 15  # Reduced from 20 to 15
+        box_height = 25  # Reduced from 30 to 25
+        box_x = self.panel_x
+        box_y = y
+        
+        # Color mapping for actions
+        action_colors = {
+            'High dosage': (255, 220, 220),          # Light red
+            'Low dosage': (220, 255, 220),           # Light green
+            'No dosage': (220, 220, 255),            # Light blue
+            'Low sugar treatment': (255, 255, 200),  # Light yellow
+            'Medium sugar treatment': (255, 235, 200), # Light orange
+            'High sugar treatment': (255, 220, 255), # Light pink
+            'No action': (240, 240, 240)             # Light gray
+        }
+        
+        box_color = action_colors.get(action_text, (240, 240, 240))
+        
+        # Draw action box
+        pygame.draw.rect(self.screen, box_color, (box_x, box_y, box_width, box_height))
+        pygame.draw.rect(self.screen, self.BLACK, (box_x, box_y, box_width, box_height), 2)
+        
+        # Action text
+        action_surface = self.info_font.render(action_text, True, self.BLACK)
+        text_rect = action_surface.get_rect(center=(box_x + box_width//2, box_y + box_height//2))
+        self.screen.blit(action_surface, text_rect)
+        
+        # Contextual advice based on sugar level
+        advice_y = y + box_height + 8  # Reduced from 10 to 8
+        sugar_level = self.env.sugar_level
+        
+        if sugar_level < 70:
+            advice = "LOW: Need glucose urgently"
+            advice_color = self.RED
+        elif sugar_level > 150:
+            advice = "HIGH: Need insulin treatment"
+            advice_color = self.RED
+        elif 80 <= sugar_level <= 105:
+            advice = "PERFECT: Maintain current status"
+            advice_color = self.DARK_GREEN
+        else:
+            advice = "NORMAL: Continue monitoring"
+            advice_color = self.BLUE
+        
+        advice_surface = self.small_font.render(advice, True, advice_color)
+        self.screen.blit(advice_surface, (self.panel_x, advice_y))
+        
+        return advice_y + 18  # Reduced from 20 to 18
+    
+    def save_screenshot(self, filename="diabetes_simulation.png"):
+        """Save current screen as image."""
+        try:
+            pygame.image.save(self.screen, filename)
+            print(f"Screenshot saved: {filename}")
+        except Exception as e:
+            print(f"Error saving screenshot: {e}")
+    
+    def close(self):
+        """Close pygame and clean up."""
         pygame.quit()
 
-# Main execution
+
+# Demo function for testing
+def run_demo():
+    """Run demonstration of the diabetes treatment environment."""
+    print("Initializing Diabetes Treatment Demo...")
+    
+    # Import here to avoid circular import
+    from custom_env import DiabetesTreatmentEnv
+    
+    env = DiabetesTreatmentEnv()
+    obs, _ = env.reset()
+    
+    print("Demo Controls:")
+    print("   - Agent decides every 7.5 seconds (3 game hours)")
+    print("   - Watch for 'THINKING...' overlay")
+    print("   - Cells flash light blue when selected")
+    print("   - Close window to stop")
+    print()
+    
+    clock = pygame.time.Clock()
+    running = True
+    
+    while running:
+        # Random action for demo
+        action = env.action_space.sample()
+        
+        # Step environment
+        obs, reward, done, truncated, info = env.step(action)
+        
+        # Render
+        running = env.render()
+        
+        # Check completion
+        if done:
+            print(f"Simulation completed!")
+            break
+        
+        # Control frame rate (30 FPS)
+        clock.tick(30)
+    
+    # Final statistics
+    print(f"\nFinal Results:")
+    print(f"   Sugar Level: {env.sugar_level:.1f} mg/dL")
+    print(f"   Patient Status: {env.get_patient_status()}")
+    print(f"   Total Reward: {env.total_reward:.1f}")
+    print(f"   Decisions Made: {env.step_count}")
+    
+    # Save final screenshot
+    if env.renderer:
+        env.renderer.save_screenshot("diabetes_final_state.png")
+    
+    env.close()
+    print("Demo completed successfully!")
+
+
 if __name__ == "__main__":
-    print("=== Diabetes Treatment Simulator ===")
-    print("Starting GUI application...")
-    
-    try:
-        simulator = DiabetesSimulatorGUI()
-        simulator.run()
-    except KeyboardInterrupt:
-        print("\nSimulation interrupted by user")
-    except Exception as e:
-        print(f"Error running simulator: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print("Simulation ended.")
-    
+    run_demo()
