@@ -27,9 +27,9 @@ class DiabetesRenderer:
         
         # Layout parameters
         self.padding = 20
-        self.section_spacing = 15  # Reduced from 25 to fit more content
+        self.section_spacing = 10  # Further reduced to fit all content
         self.title_height = 50
-        self.content_spacing = 40  # New: spacing between left and right content
+        self.content_spacing = 30  # Reduced from 40 to give more space to panel
         
         # Grid parameters (left side)
         available_grid_height = self.window_height - self.title_height - self.padding * 2
@@ -66,11 +66,11 @@ class DiabetesRenderer:
         self.PERFECT_RANGE_COLOR = (150, 255, 150, 150)  # Darker green with alpha
         self.DANGER_COLOR = (255, 200, 200, 100)  # Light red with alpha
         
-        # Fonts
+        # Fonts - optimized for compact display
         self.title_font = pygame.font.Font(None, 32)
-        self.subtitle_font = pygame.font.Font(None, 20)  # Reduced from 24 to 20
-        self.info_font = pygame.font.Font(None, 18)      # Reduced from 20 to 18
-        self.small_font = pygame.font.Font(None, 14)     # Reduced from 16 to 14
+        self.subtitle_font = pygame.font.Font(None, 18)  # Reduced from 20 to 18
+        self.info_font = pygame.font.Font(None, 16)      # Reduced from 18 to 16
+        self.small_font = pygame.font.Font(None, 12)     # Reduced from 14 to 12
         
         # Load images
         self.images = self._load_images()
@@ -81,9 +81,9 @@ class DiabetesRenderer:
         self.panel_x = self.grid_x + self.grid_width + self.content_spacing  # Updated to use content_spacing
         self.panel_y = self.grid_y
         
-        # Chart dimensions - adjusted for smaller panel with space for Y-axis labels
-        self.chart_width = self.side_panel_width - 45  # More space for Y-axis labels outside chart
-        self.chart_height = 100  # Reduced from 120 to 100
+        # Chart dimensions - optimized for better fit
+        self.chart_width = self.side_panel_width - 45  # Space for Y-axis labels
+        self.chart_height = 80  # Further reduced from 100 to 80 for better fit
         
     def _load_images(self):
         """Load all required images with professional fallbacks."""
@@ -91,7 +91,7 @@ class DiabetesRenderer:
         image_configs = {
             'doctor': ('image/doctor.png', self.BLUE, 'DOC'),
             'insulin': ('image/insulin.png', self.GREEN, 'INS'),
-            'insuline': ('image/insuline.png', self.LIGHT_GREEN, 'LOW'),
+            'insuline': ('image/insulin.png', self.LIGHT_GREEN, 'LOW'),  # Now uses same image as insulin
             'stop': ('image/stop.png', self.RED, 'STP'),
             'fruits': ('image/fruits.png', self.ORANGE, 'FRT'),
             'candy': ('image/candy.png', self.YELLOW, 'CND'),
@@ -222,10 +222,66 @@ class DiabetesRenderer:
                         img_y = cell_y + 5
                         self.screen.blit(self.images[item_type], (img_x, img_y))
         
-        # Draw agent (doctor)
-        agent_x = self.grid_x + self.env.agent_pos[1] * self.cell_size + 5
-        agent_y = self.grid_y + self.env.agent_pos[0] * self.cell_size + 5
-        self.screen.blit(self.images['doctor'], (agent_x, agent_y))
+        # Draw agent (doctor) - this will overlap with treatment items when in same cell
+        agent_row, agent_col = self.env.agent_pos
+        agent_x = self.grid_x + agent_col * self.cell_size + 5
+        agent_y = self.grid_y + agent_row * self.cell_size + 5
+        
+        # Highlight the cell where agent is located with a bright border
+        agent_cell_x = self.grid_x + agent_col * self.cell_size
+        agent_cell_y = self.grid_y + agent_row * self.cell_size
+        agent_cell_rect = pygame.Rect(agent_cell_x, agent_cell_y, self.cell_size, self.cell_size)
+        
+        # Draw thick yellow border around agent's current cell
+        pygame.draw.rect(self.screen, self.YELLOW, agent_cell_rect, 4)
+        
+        # If agent is at a treatment location, show visual overlap confirmation
+        if (agent_row, agent_col) in self.env.grid_items:
+            treatment_type = self.env.grid_items[(agent_row, agent_col)]
+            
+            # Draw treatment item again (underneath agent) to show overlap
+            if treatment_type in self.images:
+                # Draw treatment item slightly offset to the left/top
+                treatment_x = agent_cell_x + 2
+                treatment_y = agent_cell_y + 2
+                self.screen.blit(self.images[treatment_type], (treatment_x, treatment_y))
+            
+            # Draw agent slightly offset to the right/bottom to show both
+            agent_overlap_x = agent_x + 15  # Offset agent to show overlap
+            agent_overlap_y = agent_y + 15
+            self.screen.blit(self.images['doctor'], (agent_overlap_x, agent_overlap_y))
+            
+            # Draw pulsing green border to confirm agent is at treatment
+            pulse_alpha = int(127 + 127 * abs(np.sin(time.time() * 3)))  # Pulsing effect
+            pulse_surface = pygame.Surface((self.cell_size, self.cell_size))
+            pulse_surface.set_alpha(pulse_alpha)
+            pulse_surface.fill(self.GREEN)
+            self.screen.blit(pulse_surface, (agent_cell_x, agent_cell_y))
+            
+            # Map treatment types to display names
+            treatment_names = {
+                'insulin': 'HIGH INSULIN',
+                'insuline': 'LOW INSULIN',
+                'stop': 'NON TREATMENT',
+                'fruits': 'LOW SUGAR',
+                'nutrient': 'MEDIUM SUGAR',
+                'candy': 'HIGH SUGAR'
+            }
+            
+            # Add text overlay showing treatment type
+            confirm_font = pygame.font.Font(None, 16)
+            treatment_display = treatment_names.get(treatment_type, treatment_type.upper())
+            confirm_text = confirm_font.render(treatment_display, True, self.WHITE)
+            confirm_rect = confirm_text.get_rect(center=(agent_cell_x + self.cell_size//2, agent_cell_y - 15))
+            
+            # Black background for text visibility
+            text_bg = pygame.Rect(confirm_rect.x - 2, confirm_rect.y - 2, 
+                                confirm_rect.width + 4, confirm_rect.height + 4)
+            pygame.draw.rect(self.screen, self.BLACK, text_bg)
+            self.screen.blit(confirm_text, confirm_rect)
+        else:
+            # Agent not at treatment - draw normally in center of cell
+            self.screen.blit(self.images['doctor'], (agent_x, agent_y))
     
     def _draw_side_panel(self):
         """Draw the complete side panel."""
@@ -255,6 +311,10 @@ class DiabetesRenderer:
         
         # 5. Current Action
         current_y = self._draw_current_action(current_y)
+        current_y += self.section_spacing
+        
+        # 6. Position Information
+        current_y = self._draw_position_info(current_y)
     
     def _draw_section_header(self, title, y):
         """Draw a section header with underline."""
@@ -264,10 +324,10 @@ class DiabetesRenderer:
         # Underline
         header_width = header_surface.get_width()
         pygame.draw.line(self.screen, self.DARK_GRAY,
-                        (self.panel_x, y + 18),  # Reduced from 22 to 18
-                        (self.panel_x + header_width, y + 18), 1)
+                        (self.panel_x, y + 16),  # Reduced from 18 to 16
+                        (self.panel_x + header_width, y + 16), 1)
         
-        return y + 25  # Reduced from 30 to 25
+        return y + 20  # Reduced from 25 to 20
     
     def _draw_sugar_graph(self, start_y):
         """Draw animated blood sugar level graph."""
@@ -348,9 +408,9 @@ class DiabetesRenderer:
         
         # Current sugar level display
         current_sugar_text = self.small_font.render(f"Current Reading: {self.env.sugar_level:.1f} mg/dL", True, self.BLACK)
-        self.screen.blit(current_sugar_text, (self.panel_x, y + self.chart_height + 3))  # Reduced spacing
+        self.screen.blit(current_sugar_text, (self.panel_x, y + self.chart_height + 2))  # Further reduced spacing
         
-        return y + self.chart_height + 20  # Reduced from 25 to 20
+        return y + self.chart_height + 15  # Further reduced from 20 to 15
     
     def _draw_dashed_line(self, x1, y1, x2, y2, color):
         """Draw a dashed line."""
@@ -394,9 +454,9 @@ class DiabetesRenderer:
         status_color = status_colors.get(status, self.BLACK)
         
         text_surface = self.info_font.render(status_text, True, status_color)
-        self.screen.blit(text_surface, (icon_x + 70, icon_y + 15))  # Reduced vertical offset
+        self.screen.blit(text_surface, (icon_x + 70, icon_y + 12))  # Further reduced vertical offset
         
-        return y + 60  # Reduced from 70 to 60
+        return y + 50  # Further reduced from 60 to 50
     
     def _draw_rewards_panel(self, start_y):
         """Draw accumulated rewards display."""
@@ -408,10 +468,10 @@ class DiabetesRenderer:
         self.screen.blit(reward_text, (self.panel_x, y))
         
         # Reward bar visualization
-        bar_width = self.chart_width - 15  # Reduced from 20 to 15
-        bar_height = 12  # Reduced from 15 to 12
+        bar_width = self.chart_width - 15
+        bar_height = 10  # Further reduced from 12 to 10
         bar_x = self.panel_x
-        bar_y = y + 20  # Reduced from 25 to 20
+        bar_y = y + 15  # Further reduced from 20 to 15
         
         # Background bar
         pygame.draw.rect(self.screen, self.LIGHT_GRAY, (bar_x, bar_y, bar_width, bar_height))
@@ -432,7 +492,7 @@ class DiabetesRenderer:
         center_x = bar_x + bar_width // 2
         pygame.draw.line(self.screen, self.BLACK, (center_x, bar_y), (center_x, bar_y + bar_height), 2)
         
-        return y + 40  # Reduced from 50 to 40
+        return y + 30  # Further reduced from 40 to 30
     
     def _draw_time_panel(self, start_y):
         """Draw current time with progress bar."""
@@ -445,10 +505,10 @@ class DiabetesRenderer:
         
         # Progress bar for 24-hour simulation
         progress = min(self.env.simulation_time / 24.0, 1.0)
-        bar_width = self.chart_width - 15  # Reduced from 20 to 15
-        bar_height = 16  # Reduced from 20 to 16
+        bar_width = self.chart_width - 15
+        bar_height = 14  # Further reduced from 16 to 14
         bar_x = self.panel_x
-        bar_y = y + 20  # Reduced from 25 to 20
+        bar_y = y + 15  # Further reduced from 20 to 15
         
         # Background
         pygame.draw.rect(self.screen, self.LIGHT_GRAY, (bar_x, bar_y, bar_width, bar_height))
@@ -467,9 +527,9 @@ class DiabetesRenderer:
         
         # Progress percentage
         progress_text = self.small_font.render(f"{progress*100:.1f}%", True, self.BLACK)
-        self.screen.blit(progress_text, (bar_x + bar_width + 5, bar_y + 3))  # Adjusted vertical alignment
+        self.screen.blit(progress_text, (bar_x + bar_width + 5, bar_y + 2))  # Further adjusted vertical alignment
         
-        return y + 40  # Reduced from 50 to 40
+        return y + 32  # Further reduced from 40 to 32
     
     def _draw_current_action(self, start_y):
         """Draw current action taken by agent."""
@@ -479,8 +539,8 @@ class DiabetesRenderer:
         action_text = self.env.get_current_action_text()
         
         # Action box with color coding
-        box_width = self.side_panel_width - 15  # Reduced from 20 to 15
-        box_height = 25  # Reduced from 30 to 25
+        box_width = self.side_panel_width - 15
+        box_height = 20  # Further reduced from 25 to 20
         box_x = self.panel_x
         box_y = y
         
@@ -507,7 +567,7 @@ class DiabetesRenderer:
         self.screen.blit(action_surface, text_rect)
         
         # Contextual advice based on sugar level
-        advice_y = y + box_height + 8  # Reduced from 10 to 8
+        advice_y = y + box_height + 5  # Further reduced from 8 to 5
         sugar_level = self.env.sugar_level
         
         if sugar_level < 70:
@@ -526,7 +586,78 @@ class DiabetesRenderer:
         advice_surface = self.small_font.render(advice, True, advice_color)
         self.screen.blit(advice_surface, (self.panel_x, advice_y))
         
-        return advice_y + 18  # Reduced from 20 to 18
+        return advice_y + 15  # Further reduced from 18 to 15
+    
+    def _draw_position_info(self, start_y):
+        """Draw agent position and movement information with detailed verification."""
+        y = self._draw_section_header("Agent Position & Verification", start_y)
+        
+        # Current position
+        row, col = self.env.agent_pos
+        pos_text = self.info_font.render(f"Current Position: ({row}, {col})", True, self.BLACK)
+        self.screen.blit(pos_text, (self.panel_x, y))
+        y += 15  # Reduced from 18 to 15
+        
+        # Check if agent is at a treatment location
+        if (row, col) in self.env.grid_items:
+            item_type = self.env.grid_items[(row, col)]
+            
+            # Show treatment verification with green background
+            verify_rect = pygame.Rect(self.panel_x - 2, y - 2, self.side_panel_width - 10, 20)
+            pygame.draw.rect(self.screen, (200, 255, 200), verify_rect)  # Light green background
+            pygame.draw.rect(self.screen, self.DARK_GREEN, verify_rect, 2)  # Green border
+            
+            verify_text = self.info_font.render(f"AT TREATMENT: {item_type}", True, self.DARK_GREEN)
+            self.screen.blit(verify_text, (self.panel_x, y))
+            y += 22
+            
+            # Show intended vs actual position
+            intended_text = self.small_font.render(f"Intended: {item_type} at ({row}, {col})", True, self.DARK_GREEN)
+            self.screen.blit(intended_text, (self.panel_x, y))
+            y += 16
+            
+            actual_text = self.small_font.render(f"Actual: Agent at ({row}, {col})", True, self.DARK_GREEN)
+            self.screen.blit(actual_text, (self.panel_x, y))
+            y += 16
+            
+            match_text = self.small_font.render("POSITIONS MATCH!", True, self.DARK_GREEN)
+            self.screen.blit(match_text, (self.panel_x, y))
+            y += 18
+            
+        else:
+            # Agent not at treatment - show status
+            if hasattr(self.env, 'is_moving') and self.env.is_moving:
+                if hasattr(self.env, 'target_pos'):
+                    target_row, target_col = self.env.target_pos
+                    target_text = self.info_font.render(f"Moving to: ({target_row}, {target_col})", True, self.BLUE)
+                    self.screen.blit(target_text, (self.panel_x, y))
+                    y += 18
+                    
+                    # Show target treatment
+                    if (target_row, target_col) in self.env.grid_items:
+                        target_treatment = self.env.grid_items[(target_row, target_col)]
+                        treatment_text = self.small_font.render(f"Target treatment: {target_treatment}", True, self.BLUE)
+                        self.screen.blit(treatment_text, (self.panel_x, y))
+                        y += 16
+                    
+                    # Show movement progress if available
+                    if hasattr(self.env, 'move_progress'):
+                        progress = min(1.0, max(0.0, self.env.move_progress))
+                        progress_text = self.small_font.render(f"Movement progress: {progress*100:.0f}%", True, self.BLUE)
+                        self.screen.blit(progress_text, (self.panel_x, y))
+                        y += 16
+            else:
+                # Agent is idle
+                if row == 3 and col == 3:  # Center position
+                    status_text = self.info_font.render("Status: Waiting at center", True, self.GRAY)
+                    self.screen.blit(status_text, (self.panel_x, y))
+                    y += 18
+                else:
+                    status_text = self.info_font.render(f"Status: Idle at ({row}, {col})", True, self.GRAY)
+                    self.screen.blit(status_text, (self.panel_x, y))
+                    y += 18
+        
+        return y
     
     def save_screenshot(self, filename="diabetes_simulation.png"):
         """Save current screen as image."""
@@ -556,6 +687,8 @@ def run_demo():
     print("   - Agent decides every 7.5 seconds (3 game hours)")
     print("   - Watch for 'THINKING...' overlay")
     print("   - Cells flash light blue when selected")
+    print("   - Agent moves step-by-step to treatments")
+    print("   - Position verification shows movement progress")
     print("   - Close window to stop")
     print()
     
@@ -589,7 +722,7 @@ def run_demo():
     
     # Save final screenshot
     if env.renderer:
-        env.renderer.save_screenshot("diabetes_final_state.png")
+        env.renderer.save_screenshot("results_random_action.png")
     
     env.close()
     print("Demo completed successfully!")

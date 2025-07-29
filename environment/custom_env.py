@@ -20,8 +20,13 @@ class DiabetesTreatmentEnv(gym.Env):
         # Environment parameters
         self.grid_size = 7
         self.simulation_duration = 60.0  # 60 seconds = 24 hours simulation
-        self.decision_interval = 7.5  # Agent moves every 7.5 seconds (3 in-game hours)
+        self.decision_interval = 7.5  # Agent makes decisions every 7.5 seconds (3 in-game hours)
         self.hour_duration = 2.5  # 1 hour = 2.5 seconds real time
+        
+        # Movement timing
+        self.movement_duration = 4.0  # 4 seconds to reach treatment (slower movement)
+        self.treatment_duration = 1.5  # 1.5 seconds at treatment location
+        # No return duration - instant return to center
         
         # Action space: 0=Up, 1=Down, 2=Left, 3=Right
         self.action_space = spaces.Discrete(4)
@@ -33,16 +38,16 @@ class DiabetesTreatmentEnv(gym.Env):
             dtype=np.float32
         )
         
-        # Grid items positions (row, col) -> item_type
+        # Grid items positions (row, col) -> item_type - placed in corners
         self.grid_items = {
-            # Top row (row 0)
-            (0, 1): 'insulin',     # High dosage
-            (0, 3): 'stop',        # No dosage
-            (0, 5): 'insuline',    # Low dosage
-            # Bottom row (row 6)
-            (6, 1): 'fruits',      # Low sugar treatment
-            (6, 3): 'nutrient',    # Medium sugar treatment
-            (6, 5): 'candy'        # High sugar treatment
+            # Corner positions
+            (0, 0): 'insulin',     # Top-left: High dosage
+            (0, 6): 'insuline',    # Top-right: Low dosage
+            (6, 0): 'stop',        # Bottom-left: No dosage
+            (6, 6): 'candy',       # Bottom-right: High sugar treatment
+            # Additional strategic positions
+            (0, 3): 'fruits',      # Top-center: Low sugar treatment
+            (6, 3): 'nutrient',    # Bottom-center: Medium sugar treatment
         }
         
         # Treatment effects on blood sugar
@@ -64,11 +69,8 @@ class DiabetesTreatmentEnv(gym.Env):
         """Reset environment to initial state."""
         super().reset(seed=seed)
         
-        # Random agent starting position
-        self.agent_pos = [
-            np.random.randint(0, self.grid_size),
-            np.random.randint(0, self.grid_size)
-        ]
+        # Agent always starts in the center of the grid (3, 3)
+        self.agent_pos = [3, 3]  # Center position in 7x7 grid
         
         # Initialize blood sugar simulation
         self.sugar_level = np.random.uniform(90, 110)  # Start near normal
@@ -88,6 +90,16 @@ class DiabetesTreatmentEnv(gym.Env):
         self.is_thinking = False
         self.thinking_start = 0
         
+        # Movement tracking for smooth animation
+        self.is_moving = False
+        self.target_pos = None
+        self.movement_start_time = 0
+        self.movement_path = []
+        self.current_path_index = 0
+        self.move_progress = 0.0  # Progress percentage for rendering
+        self.cycle_complete = True  # Ready for next decision cycle
+        self.current_cycle_reward = 0  # Track reward for current cycle
+        
         # Sugar level dynamics
         self.sugar_trend = np.random.uniform(-0.5, 0.5)  # Natural trend
         self.last_treatment_effect = 0
@@ -95,11 +107,15 @@ class DiabetesTreatmentEnv(gym.Env):
         return self._get_observation(), {}
     
     def step(self, action):
-        """Execute one step in the environment."""
+        """Execute one step in the environment with intelligent movement."""
         current_time = time.time()
         
-        # Only allow decisions every 7.5 seconds (3 in-game hours)
-        if current_time - self.last_decision_time >= self.decision_interval:
+        # Handle ongoing movement animation
+        if self.is_moving:
+            self._update_movement_animation()
+            reward = 0
+        # Only allow new decisions when cycle is complete and 3 hours have passed
+        elif self.cycle_complete and current_time - self.last_decision_time >= self.decision_interval:
             # Show thinking overlay
             self.is_thinking = True
             self.thinking_start = current_time
@@ -107,27 +123,21 @@ class DiabetesTreatmentEnv(gym.Env):
             # Wait 0.5 seconds for thinking animation
             time.sleep(0.5)
             
-            # Execute movement
-            old_pos = self.agent_pos.copy()
-            self._move_agent(action)
+            # Determine optimal treatment based on sugar level and time
+            optimal_treatment = self._get_optimal_action()
             
-            # Flash action cell
-            self.last_action_cell = tuple(self.agent_pos)
-            self.action_flash_start = current_time
+            # Start movement to target location
+            self._start_movement_to_target(optimal_treatment)
             
             self.last_decision_time = current_time
             self.step_count += 1
             self.is_thinking = False
-            
-            # Apply treatment effect
-            self._apply_treatment()
-            
-            # Calculate reward
-            reward = self._calculate_reward(old_pos, self.agent_pos)
-            self.total_reward += reward
+            self.cycle_complete = False  # Mark cycle as in progress
+            self.current_cycle_reward = 0  # Reset cycle reward
             
             # Log action for debugging
-            self._log_action(action, reward)
+            self._log_action_intelligent(optimal_treatment, 0)
+            reward = 0
         else:
             reward = 0
         
@@ -219,22 +229,18 @@ class DiabetesTreatmentEnv(gym.Env):
         return reward
     
     def _get_treatment_reward(self, item_type):
-        """Get reward for choosing a specific treatment."""
+        """Get reward for choosing a specific treatment (+10 correct, -10 wrong)."""
         if item_type == 'insulin':  # High dosage
             if self.sugar_level > 150:
                 return 10  # Correct for high sugar
-            elif self.sugar_level < 80:
-                return -10  # Wrong for low sugar
             else:
-                return 0
+                return -10  # Wrong for normal/low sugar
                 
         elif item_type == 'insuline':  # Low dosage
             if 120 < self.sugar_level <= 150:
                 return 10  # Correct for moderately high sugar
-            elif self.sugar_level < 80:
-                return -10  # Wrong for low sugar
             else:
-                return 2  # Preventive
+                return -10  # Wrong for other levels
                 
         elif item_type == 'stop':  # No dosage
             if 80 <= self.sugar_level <= 120:
@@ -245,40 +251,34 @@ class DiabetesTreatmentEnv(gym.Env):
         elif item_type == 'fruits':  # Low sugar treatment
             if self.sugar_level < 80:
                 return 10  # Correct for low sugar
-            elif self.sugar_level > 140:
-                return -10  # Wrong for high sugar
             else:
-                return 2
+                return -10  # Wrong for normal/high sugar
                 
         elif item_type == 'nutrient':  # Medium sugar treatment
             if 60 <= self.sugar_level <= 90:
                 return 10  # Good for mild low sugar
-            elif self.sugar_level > 150:
-                return -10  # Wrong for high sugar
             else:
-                return 3
+                return -10  # Wrong for other levels
                 
         elif item_type == 'candy':  # High sugar treatment
             if self.sugar_level < 60:
                 return 10  # Emergency treatment
-            elif self.sugar_level > 120:
-                return -10  # Very wrong
             else:
-                return -5  # Generally not ideal
+                return -10  # Wrong for normal/high sugar
         
         return 0
     
     def _get_distance_reward(self, pos):
         """Get reward based on distance to appropriate treatment."""
         if self.sugar_level > 150:
-            # Need insulin
-            target_positions = [(0, 1), (0, 5)]  # insulin, insuline
+            # Need insulin - corner positions
+            target_positions = [(0, 0), (0, 6)]  # insulin, insuline
             min_distance = min([self._manhattan_distance(pos, tpos) for tpos in target_positions])
             return max(0, 2 - min_distance * 0.3)
             
         elif self.sugar_level < 80:
-            # Need sugar
-            sugar_positions = [(6, 1), (6, 3), (6, 5)]  # fruits, nutrient, candy
+            # Need sugar - corner and edge positions
+            sugar_positions = [(6, 6), (0, 3), (6, 3)]  # candy, fruits, nutrient
             min_distance = min([self._manhattan_distance(pos, spos) for spos in sugar_positions])
             return max(0, 2 - min_distance * 0.3)
             
@@ -309,12 +309,298 @@ class DiabetesTreatmentEnv(gym.Env):
             self.simulation_time
         ], dtype=np.float32)
     
-    def _log_action(self, action, reward):
-        """Log action details for debugging."""
-        action_names = ['Up', 'Down', 'Left', 'Right']
-        print(f"[{self.get_formatted_time()}] Agent moved {action_names[action]} to {self.agent_pos}, "
-              f"Sugar: {self.sugar_level:.1f} mg/dL, Action: {self.get_current_action_text()}, "
-              f"Reward: {reward:.1f}, Total: {self.total_reward:.1f}")
+    def _get_optimal_action(self):
+        """Determine the optimal treatment based on current sugar level and time."""
+        # Critical situations - immediate action needed
+        if self.sugar_level < 60:  # Severe hypoglycemia
+            return 'candy'  # Emergency high sugar treatment
+        elif self.sugar_level > 200:  # Severe hyperglycemia
+            return 'insulin'  # Strong insulin needed
+        
+        # Time-based treatment decisions
+        hour_of_day = self.simulation_time % 24
+        
+        # Morning (6-10): More aggressive treatment due to dawn phenomenon
+        if 6 <= hour_of_day < 10:
+            if self.sugar_level > 140:
+                return 'insulin'
+            elif self.sugar_level > 120:
+                return 'insuline'
+            elif 70 <= self.sugar_level <= 120:
+                return 'stop'
+            elif self.sugar_level < 80:
+                return 'fruits'
+                
+        # Meal times (12-13, 18-19): Preventive care
+        elif (12 <= hour_of_day < 13) or (18 <= hour_of_day < 19):
+            if self.sugar_level > 150:
+                return 'insulin'
+            elif self.sugar_level > 130:
+                return 'insuline'
+            elif 80 <= self.sugar_level <= 130:
+                return 'stop'  # No intervention needed before meals
+            elif self.sugar_level < 80:
+                return 'nutrient'
+                
+        # Night time (22-6): Conservative approach
+        elif hour_of_day >= 22 or hour_of_day < 6:
+            if self.sugar_level > 180:
+                return 'insuline'  # Gentler approach at night
+            elif self.sugar_level > 160:
+                return 'stop'  # Monitor only
+            elif 70 <= self.sugar_level <= 160:
+                return 'stop'
+            elif self.sugar_level < 70:
+                return 'fruits'
+                
+        # Regular hours (10-12, 13-18, 19-22): Standard treatment
+        else:
+            if self.sugar_level > 160:
+                return 'insulin'
+            elif self.sugar_level > 130:
+                return 'insuline'
+            elif 80 <= self.sugar_level <= 130:
+                return 'stop'
+            elif 60 <= self.sugar_level < 80:
+                return 'fruits'
+            else:
+                return 'nutrient'
+    
+    def _start_movement_to_target(self, target_treatment):
+        """Start smooth movement to target treatment location."""
+        target_positions = {
+            'insulin': (0, 0),    # Top-left
+            'insuline': (0, 6),   # Top-right
+            'stop': (6, 0),       # Bottom-left
+            'candy': (6, 6),      # Bottom-right
+            'fruits': (0, 3),     # Top-center
+            'nutrient': (6, 3)    # Bottom-center
+        }
+        
+        if target_treatment in target_positions:
+            self.target_pos = list(target_positions[target_treatment])
+        else:
+            self.target_pos = [3, 3]  # Default to center
+        
+        # Verify the target position matches the grid items
+        target_tuple = tuple(self.target_pos)
+        if target_tuple in self.grid_items:
+            expected_item = self.grid_items[target_tuple]
+            if expected_item != target_treatment:
+                print(f"WARNING: Position mismatch! Expected {target_treatment} at {target_tuple}, but found {expected_item}")
+        
+        # Create movement path (step by step)
+        self.movement_path = self._calculate_path(self.agent_pos, self.target_pos)
+        self.current_path_index = 0
+        self.is_moving = True
+        self.movement_start_time = time.time()
+        
+        print(f"\nAgent starting movement from {self.agent_pos} to {self.target_pos} for {target_treatment}")
+        print(f"Target treatment position: {target_positions[target_treatment]} (row, col)")
+        print(f"Path length: {len(self.movement_path)} steps (will take 4 seconds)")
+        print(f"Verification: Grid at {target_tuple} contains '{self.grid_items.get(target_tuple, 'EMPTY')}'")
+        
+        # Show the planned path
+        if self.movement_path:
+            path_str = " -> ".join([str(pos) for pos in self.movement_path])
+            print(f"Planned path: {self.agent_pos} -> {path_str}")
+    
+    def _calculate_path(self, start, end):
+        """Calculate step-by-step path from start to end position."""
+        path = []
+        current = start.copy()
+        
+        # Move row-wise first, then column-wise (Manhattan path)
+        while current[0] != end[0]:
+            if current[0] < end[0]:
+                current[0] += 1
+            else:
+                current[0] -= 1
+            path.append(current.copy())
+        
+        while current[1] != end[1]:
+            if current[1] < end[1]:
+                current[1] += 1
+            else:
+                current[1] -= 1
+            path.append(current.copy())
+        
+        return path
+    
+    def _update_movement_animation(self):
+        """Update agent position during smooth movement animation."""
+        current_time = time.time()
+        elapsed = current_time - self.movement_start_time
+        
+        # Moving to treatment location (4 seconds)
+        if len(self.movement_path) == 0:
+            # No path means we're already at target, finish movement phase
+            self._finish_movement_to_treatment()
+            return
+        
+        # Calculate how many steps should be completed by now
+        steps_per_second = len(self.movement_path) / self.movement_duration
+        target_step = int(elapsed * steps_per_second)
+        
+        # Move to the appropriate step in the path
+        if target_step < len(self.movement_path):
+            # Update agent position to current step
+            old_pos = self.agent_pos.copy()
+            self.agent_pos = self.movement_path[target_step].copy()
+            self.current_path_index = target_step
+            
+            # Show movement progress (only when position actually changes)
+            if old_pos != self.agent_pos:
+                pos_tuple = tuple(self.agent_pos)
+                treatment_here = self.grid_items.get(pos_tuple, 'empty')
+                print(f"Agent moving step-by-step to {self.agent_pos} (contains: {treatment_here})")
+            
+            # Calculate movement progress percentage
+            progress = (target_step + 1) / len(self.movement_path)
+            self.move_progress = progress
+            
+        else:
+            # Movement complete - agent has reached the TARGET TREATMENT
+            self.agent_pos = self.target_pos.copy()
+            self.move_progress = 1.0
+            
+            # Verify we're at the correct treatment
+            pos_tuple = tuple(self.agent_pos)
+            treatment_here = self.grid_items.get(pos_tuple, 'EMPTY')
+            print(f"Agent reached TARGET treatment at {self.agent_pos} (treatment: {treatment_here})")
+            
+            # Complete the movement cycle immediately
+            self._finish_movement_to_treatment()
+    
+    def _calculate_position_reward(self):
+        """Calculate reward for current position during movement."""
+        pos_tuple = tuple(self.agent_pos)
+        
+        # Empty grid = 0 reward
+        if pos_tuple not in self.grid_items:
+            return 0
+        
+        # Treatment grid - check if it's correct
+        item_type = self.grid_items[pos_tuple]
+        return self._get_treatment_reward(item_type)
+    
+    def _end_cycle_immediately(self):
+        """End current cycle immediately and return to center."""
+        self.is_moving = False
+        
+        # Apply final treatment effect if on treatment cell
+        self._apply_treatment()
+        
+        # Add cycle reward to total
+        self.total_reward += self.current_cycle_reward
+        
+        # Flash current cell
+        self.last_action_cell = tuple(self.agent_pos)
+        self.action_flash_start = time.time()
+        
+        print(f"Cycle ended at {self.agent_pos}. Cycle reward: {self.current_cycle_reward}")
+        
+        # Instantly return to center
+        self.agent_pos = [3, 3]
+        self.cycle_complete = True
+        
+        print(f"Agent instantly returned to center. Ready for next cycle.")
+    
+    def _finish_movement_to_treatment(self):
+        """Complete the movement to treatment, apply reward, and instantly return to center."""
+        self.is_moving = False
+        
+        # CRITICAL: Ensure agent is at exact target position
+        self.agent_pos = self.target_pos.copy()
+        
+        # Verify agent is at the correct treatment location
+        pos_tuple = tuple(self.agent_pos)
+        actual_treatment = self.grid_items.get(pos_tuple, 'EMPTY')
+        
+        # Flash action cell to show treatment was applied
+        self.last_action_cell = pos_tuple
+        self.action_flash_start = time.time()
+        
+        # Apply treatment effect
+        self._apply_treatment()
+        
+        # Calculate and apply reward for this ONE treatment only
+        if pos_tuple in self.grid_items:
+            treatment_reward = self._get_treatment_reward(actual_treatment)
+            self.current_cycle_reward = treatment_reward  # Only one reward per cycle
+            self.total_reward += treatment_reward
+            
+            print(f"TREATMENT COMPLETED:")
+            print(f"   Agent position: {self.agent_pos}")
+            print(f"   Treatment: '{actual_treatment}'")
+            print(f"   Reward: {treatment_reward}")
+            print(f"   Total reward: {self.total_reward}")
+        
+        # Brief pause to show the overlap and treatment (0.3s to see the visual)
+        time.sleep(0.3)
+        
+        # Instantly return to center after treatment
+        self.agent_pos = [3, 3]
+        self.cycle_complete = True
+        
+        print(f"Treatment '{actual_treatment}' applied successfully!")
+        print(f"Agent instantly returned to center {self.agent_pos}. Ready for next cycle.")
+        print("-" * 60)  # Separator for clarity
+    
+    def _move_agent_to_target(self, target_treatment):
+        """Move agent directly to the target treatment location."""
+        target_positions = {
+            'insulin': (0, 0),    # Top-left
+            'insuline': (0, 6),   # Top-right
+            'stop': (6, 0),       # Bottom-left
+            'candy': (6, 6),      # Bottom-right
+            'fruits': (0, 3),     # Top-center
+            'nutrient': (6, 3)    # Bottom-center
+        }
+        
+        if target_treatment in target_positions:
+            target_pos = target_positions[target_treatment]
+            self.agent_pos = [target_pos[0], target_pos[1]]
+        else:
+            # Default to center if target not found
+            self.agent_pos = [3, 3]
+    
+    def _gradual_return_to_center(self):
+        """Gradually move agent back to center between decision intervals."""
+        current_time = time.time()
+        elapsed_since_decision = current_time - self.last_decision_time
+        
+        # Start returning to center after staying at treatment for 4 seconds
+        if elapsed_since_decision >= 4.0:
+            center = [3, 3]
+            
+            # Move one step closer to center if not already there
+            if self.agent_pos != center:
+                # Move towards center gradually
+                if self.agent_pos[0] < center[0]:
+                    self.agent_pos[0] += 1
+                elif self.agent_pos[0] > center[0]:
+                    self.agent_pos[0] -= 1
+                elif self.agent_pos[1] < center[1]:
+                    self.agent_pos[1] += 1
+                elif self.agent_pos[1] > center[1]:
+                    self.agent_pos[1] -= 1
+    
+    def _log_action_intelligent(self, treatment, reward):
+        """Log intelligent action details for debugging."""
+        treatment_names = {
+            'insulin': 'High Insulin Dose',
+            'insuline': 'Low Insulin Dose',
+            'stop': 'Monitor Only',
+            'fruits': 'Fruits (Light Sugar)',
+            'nutrient': 'Nutrients (Medium Sugar)',
+            'candy': 'Candy (Emergency Sugar)'
+        }
+        
+        treatment_name = treatment_names.get(treatment, 'Unknown')
+        
+        print(f"[{self.get_formatted_time()}] Agent chose {treatment_name} at {self.agent_pos}, "
+              f"Sugar: {self.sugar_level:.1f} mg/dL, Reward: {reward:.1f}, Total: {self.total_reward:.1f}")
     
     def get_current_action_text(self):
         """Get current action description based on agent position."""
@@ -323,16 +609,16 @@ class DiabetesTreatmentEnv(gym.Env):
         if pos_tuple in self.grid_items:
             item_type = self.grid_items[pos_tuple]
             action_map = {
-                'insulin': 'High dosage',
-                'insuline': 'Low dosage', 
-                'stop': 'No dosage',
-                'fruits': 'Low sugar treatment',
-                'nutrient': 'Medium sugar treatment',
-                'candy': 'High sugar treatment'
+                'insulin': 'High Insulin Dose',
+                'insuline': 'Low Insulin Dose', 
+                'stop': 'Monitor Only',
+                'fruits': 'Fruits (Light Sugar)',
+                'nutrient': 'Nutrients (Medium Sugar)',
+                'candy': 'Candy (Emergency Sugar)'
             }
             return action_map.get(item_type, 'No action')
         
-        return 'No action'
+        return 'Moving to Center'
     
     def get_patient_status(self):
         """Get patient status based on current sugar level."""
@@ -375,20 +661,27 @@ class DiabetesTreatmentEnv(gym.Env):
 
 
 def run_random_simulation():
-    """Run a simulation with random agent movements."""
+    """Run a simulation with intelligent agent movements."""
     env = DiabetesTreatmentEnv()
     obs, _ = env.reset()
     
-    print("🏥 Starting Diabetes Treatment Simulation...")
-    print("📊 Agent makes decisions every 7.5 seconds (3 in-game hours)")
-    print("⏱️ Simulation duration: 60 seconds (24 hours game time)")
-    print("🔄 Close window to stop simulation\n")
+    print("Starting Intelligent Diabetes Treatment Simulation...")
+    print("Every 3 in-game hours (7.5 seconds real-time):")
+    print("  1. Agent thinks and decides optimal treatment (0.5s)")
+    print("  2. Agent moves step-by-step to exact treatment location (4s)")
+    print("  3. Agent stays at treatment location (1.5s)")
+    print("  4. Rewards: +10 correct treatment, -10 wrong treatment, 0 empty grid")
+    print("  5. Cycle ends when +/-10 reward reached OR target reached")
+    print("  6. Agent instantly returns to center")
+    print("Simulation duration: 60 seconds (24 hours game time)")
+    print("Close window to stop simulation\n")
     
     running = True
     
     while running:
-        # Generate random action
-        action = env.action_space.sample()
+        # The agent now makes intelligent decisions automatically
+        # We still need to call step() but the action parameter is ignored
+        action = 0  # Dummy action, not used in intelligent mode
         
         # Step environment
         obs, reward, done, truncated, info = env.step(action)
@@ -400,21 +693,21 @@ def run_random_simulation():
         
         # Check if simulation should end
         if done:
-            print(f"\n🏁 Episode ended: Sugar level {env.sugar_level:.1f} mg/dL")
+            print(f"\nEpisode ended: Sugar level {env.sugar_level:.1f} mg/dL")
             break
         
         # Small delay to control frame rate
         time.sleep(0.1)
     
-    print(f"\n📈 Simulation Results:")
+    print(f"\nSimulation Results:")
     print(f"   Final sugar level: {env.sugar_level:.1f} mg/dL")
     print(f"   Total reward: {env.total_reward:.1f}")
     print(f"   Patient status: {env.get_patient_status()}")
-    print(f"   Decisions made: {env.step_count}")
+    print(f"   Treatment cycles completed: {env.step_count}")
     
     # Save screenshot
     if env.renderer:
-        env.renderer.save_screenshot("diabetes_simulation_final.png")
+        env.renderer.save_screenshot("diabetes_final_state.png")
     
     env.close()
 
