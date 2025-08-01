@@ -22,18 +22,18 @@ try:
     from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
     from stable_baselines3.common.monitor import Monitor
     from stable_baselines3.common.logger import configure
-    print("✓ Stable Baselines3 imported successfully")
+    print("Stable Baselines3 imported successfully")
 except ImportError as e:
-    print(f"✗ Error importing Stable Baselines3: {e}")
+    print(f"Error importing Stable Baselines3: {e}")
     print("Install with: pip install stable-baselines3[extra]")
     sys.exit(1)
 
 # Import custom environment
 try:
     from environment.custom_env import DiabetesTreatmentEnv
-    print("✓ Custom environment imported successfully")
+    print("Custom environment imported successfully")
 except ImportError as e:
-    print(f"✗ Error importing custom environment: {e}")
+    print(f"Error importing custom environment: {e}")
     print("Make sure custom_env.py is in the environment/ directory")
     sys.exit(1)
 
@@ -52,9 +52,9 @@ def create_training_environment():
     print("Checking environment compatibility...")
     try:
         check_env(env)
-        print("✓ Environment check passed!")
+        print("Environment check passed!")
     except Exception as e:
-        print(f"✗ Environment check failed: {e}")
+        print(f"Environment check failed: {e}")
         return None
     
     return env
@@ -70,7 +70,7 @@ def setup_directories():
     
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
-        print(f"✓ Directory created: {directory}")
+        print(f"Directory created: {directory}")
 
 def train_dqn_model():
     """Train DQN model on the diabetes treatment environment."""
@@ -114,12 +114,12 @@ def train_dqn_model():
         seed=42                  # For reproducible results
     )
     
-    print("✓ DQN model configured!")
-    print(f"  - Network architecture: [64, 64]")
-    print(f"  - Learning rate: {model.learning_rate}")
-    print(f"  - Buffer size: {model.buffer_size}")
-    print(f"  - Exploration: {model.exploration_initial_eps} → {model.exploration_final_eps}")
-    
+    print("DQN model configured!")
+    print(f" - Network architecture: [64, 64]")
+    print(f" - Learning rate: {model.learning_rate}")
+    print(f" - Buffer size: {model.buffer_size}")
+    print(f" - Exploration: {model.exploration_initial_eps} → {model.exploration_final_eps}")
+    print(f" - Training frequency: {model.train_freq} steps")
     # Create callbacks for evaluation and checkpointing
     eval_callback = EvalCallback(
         eval_env,
@@ -159,12 +159,12 @@ def train_dqn_model():
     )
     
     training_time = time.time() - start_time
-    print(f"\n✓ Training completed in {training_time:.1f} seconds!")
+    print(f"\nTraining completed in {training_time:.1f} seconds!")
     
     # Save final model
     final_model_path = "models/dqn/dqn_diabetes_final"
     model.save(final_model_path)
-    print(f"✓ Final model saved to: {final_model_path}.zip")
+    print(f"Final model saved to: {final_model_path}.zip")
     
     return model, env
 
@@ -177,9 +177,9 @@ def evaluate_trained_model(model_path="models/dqn/dqn_diabetes_final"):
     # Load the trained model
     try:
         model = DQN.load(model_path)
-        print(f"✓ Model loaded from: {model_path}.zip")
+        print(f"Model loaded from: {model_path}.zip")
     except Exception as e:
-        print(f"✗ Could not load model: {e}")
+        print(f"Could not load model: {e}")
         return
     
     # Create test environment
@@ -246,9 +246,9 @@ def demo_visual_test(model_path="models/dqn/dqn_diabetes_final"):
     # Load the trained model
     try:
         model = DQN.load(model_path)
-        print(f"✓ Model loaded from: {model_path}.zip")
+        print(f"Model loaded from: {model_path}.zip")
     except Exception as e:
-        print(f"✗ Could not load model: {e}")
+        print(f"Could not load model: {e}")
         print("Make sure to train the model first!")
         return
     
@@ -257,7 +257,7 @@ def demo_visual_test(model_path="models/dqn/dqn_diabetes_final"):
     
     try:
         obs, _ = env.reset()
-        print("\n🎮 Starting visual demonstration...")
+        print("\nStarting visual demonstration...")
         print("Watch the agent navigate and make treatment decisions!")
         
         for step in range(200):  # Run for 200 steps max
@@ -284,7 +284,7 @@ def demo_visual_test(model_path="models/dqn/dqn_diabetes_final"):
                 print("Episode completed!")
                 break
         
-        print("✓ Visual demonstration completed!")
+        print("Visual demonstration completed!")
         
     except KeyboardInterrupt:
         print("\nDemo stopped by user.")
@@ -295,14 +295,14 @@ def demo_visual_test(model_path="models/dqn/dqn_diabetes_final"):
 
 def main():
     """Main training and evaluation pipeline."""
-    print("🏥 DQN Diabetes Treatment Training Pipeline")
+    print("DQN Diabetes Treatment Training Pipeline")
     print("=" * 60)
     
     # Check if we need to train or just evaluate
     model_exists = os.path.exists("models/dqn/dqn_diabetes_final.zip")
     
     if model_exists:
-        print("✓ Trained model found!")
+        print("Trained model found!")
         choice = input("Choose: (t)rain new model, (e)valuate existing, or (d)emo visual? [t/e/d]: ").lower()
     else:
         print("No trained model found. Will train a new model.")
@@ -310,11 +310,11 @@ def main():
     
     if choice == 't' or not model_exists:
         # Train the model
-        print("\n🚀 Starting training process...")
+        print("\nStarting training process...")
         model, env = train_dqn_model()
         
         if model is not None:
-            print("\n🎯 Training successful! Running evaluation...")
+            print("\nTraining successful! Running evaluation...")
             evaluate_trained_model()
             
             # Ask if user wants to see visual demo
