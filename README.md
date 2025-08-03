@@ -1,8 +1,9 @@
 # **Reinforcement Learning Project**
 
 ## Important Links:
-Comprehensive Report: [Click here for Documentation Report](https://github.com/M-Pascal/Pascal_Mugisha_rl_Summative/blob/main/Report_ML_Techniques_II%20%5BPascal%20M_Summative_Assign%5D.pdf)
-Demo-Video: [Click here for Demo Video](https://youtu.be/tPNbfBhom8M)
+[![YouTube Video tPNbfBhom8M](https://img.youtube.com/vi/tPNbfBhom8M/maxresdefault.jpg)](https://www.youtube.com/watch?v=tPNbfBhom8M)
+1. Demo-Video: [Click here for Demo Video](https://youtu.be/tPNbfBhom8M)
+2. Comprehensive Report: [Click here for Documentation Report](https://github.com/M-Pascal/Pascal_Mugisha_rl_Summative/blob/main/Report_ML_Techniques_II%20%5BPascal%20M_Summative_Assign%5D.pdf)
 
 ## Diabetes Treatment RL Environment
 
