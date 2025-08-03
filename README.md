@@ -1,4 +1,8 @@
-# Pascal_Mugisha_rl_Summative
+# **Reinforcement Learning Project**
+
+## Important Links:
+Comprehensive Report: [Click here for Documentation Report](https://github.com/M-Pascal/Pascal_Mugisha_rl_Summative/blob/main/Report_ML_Techniques_II%20%5BPascal%20M_Summative_Assign%5D.pdf)
+Demo-Video: [Click here for Demo Video](https://youtu.be/tPNbfBhom8M)
 
 ## Diabetes Treatment RL Environment
 
@@ -18,11 +22,11 @@ This project addresses the critical challenge of diabetes management through int
 
 ### Treatment Options
 
-- **Insulin**: High-dose glucose reduction (emergency situations)
-- **Insuline**: Low-dose glucose reduction (mild management)
-- **Candy**: Rapid glucose increase (hypoglycemia treatment)
-- **Fruits**: Moderate glucose increase (natural energy)
-- **Nutrient**: Balanced nutrition (steady management)
+- **High-dose**:  glucose reduction (emergency situations)
+- **Low-dose**:  glucose reduction (mild management)
+- **Rapid glucose**: glucose increase (hypoglycemia treatment)
+- **Moderate**:  glucose increase (natural energy)
+- **Balanced**: Balanced nutrition (steady management)
 - **Stop**: No treatment (maintenance periods)
 
 ## Implemented RL Algorithms
@@ -73,7 +77,7 @@ Pascal_Mugisha_rl_Summative/
 └── README.md                     # This file
 ```
 
-## Quick Start
+## Quick Start for the project
 
 ### 1. Installation
 
@@ -248,9 +252,6 @@ The project evaluates each algorithm on:
 # Basic simulation with GIF recording
 python main.py
 
-# Compare specific models
-python main.py --model training/models/ppo/ppo_diabetes_final --type ppo
-
 # Generate analysis plots for report
 python analysis.py
 
@@ -258,17 +259,14 @@ python analysis.py
 cd environment && python save_demo.py
 ```
 
-## Academic Context
+## Usage Context
 
 This project was developed for the RL Summative Assignment comparing value-based and policy gradient methods in a domain-specific healthcare application. The diabetes treatment environment provides a realistic testbed for evaluating RL algorithms' ability to make sequential decisions with clinical impact.
 
-## License
-
-This project is for academic purposes. Please cite if using for research.
 
 ---
 
 **Author**: Pascal Mugisha  
-**Course**: Reinforcement Learning  
+**Course**: ML_Technique_II  
 **Environment**: Diabetes Treatment Simulation  
 **Algorithms**: DQN, PPO, A2C, REINFORCE
