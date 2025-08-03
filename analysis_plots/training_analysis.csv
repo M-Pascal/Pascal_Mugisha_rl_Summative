@@ -1,0 +1,5 @@
+Algorithm,Initial Performance,Final Performance,Total Improvement,Convergence Episode,Sample Efficiency (90%),Final Stability (σ),Learning Rate
+DQN,-9.6,281.1,290.7,0,680,2.9,Fast
+PPO,37.9,319.1,281.2,980,590,0.9,Fast
+A2C,17.1,244.9,227.8,840,510,0.2,Moderate
+REINFORCE,-63.7,178.4,242.1,0,790,7.4,Moderate
