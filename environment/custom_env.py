@@ -109,11 +109,13 @@ class DiabetesTreatmentEnv(gym.Env):
     def step(self, action):
         """Execute one step in the environment with intelligent movement."""
         current_time = time.time()
+        reward = 0
         
         # Handle ongoing movement animation
         if self.is_moving:
             self._update_movement_animation()
-            reward = 0
+            # Apply continuous health state reward during movement
+            reward = self._get_health_state_reward() * 0.1  # Scaled down for continuous updates
         # Only allow new decisions when cycle is complete and 3 hours have passed
         elif self.cycle_complete and current_time - self.last_decision_time >= self.decision_interval:
             # Show thinking overlay
@@ -126,20 +128,26 @@ class DiabetesTreatmentEnv(gym.Env):
             # Determine optimal treatment based on sugar level and time
             optimal_treatment = self._get_optimal_action()
             
+            # Calculate old position for reward calculation
+            old_pos = self.agent_pos.copy()
+            
             # Start movement to target location
             self._start_movement_to_target(optimal_treatment)
+            
+            # Calculate reward for this decision
+            reward = self._calculate_reward(old_pos, self.agent_pos)
+            
+            # Track cumulative reward
+            self.total_reward += reward
+            self.current_cycle_reward += reward
             
             self.last_decision_time = current_time
             self.step_count += 1
             self.is_thinking = False
             self.cycle_complete = False  # Mark cycle as in progress
-            self.current_cycle_reward = 0  # Reset cycle reward
             
             # Log action for debugging
-            self._log_action_intelligent(optimal_treatment, 0)
-            reward = 0
-        else:
-            reward = 0
+            self._log_action_intelligent(optimal_treatment, reward)
         
         # Update simulation time continuously
         elapsed = current_time - self.start_time
@@ -151,10 +159,16 @@ class DiabetesTreatmentEnv(gym.Env):
         # Check if episode is done
         done = self._is_episode_done()
         
+        # Add episode completion bonus/penalty
+        if done:
+            completion_reward = self._get_episode_completion_reward()
+            reward += completion_reward
+            self.total_reward += completion_reward
+        
         # Get current observation
         obs = self._get_observation()
         
-        return obs, reward, done, False, {}
+        return obs, reward, done, False, {'total_reward': self.total_reward}
     
     def _move_agent(self, action):
         """Move agent based on action with smooth animation."""
@@ -204,69 +218,202 @@ class DiabetesTreatmentEnv(gym.Env):
                 self.time_history = self.time_history[-100:]
     
     def _calculate_reward(self, old_pos, new_pos):
-        """Calculate reward based on agent movement and current state."""
+        """Calculate sophisticated reward based on diabetes management quality."""
         reward = 0
         
-        # Perfect sugar range bonus
-        if 80 <= self.sugar_level <= 105:
-            reward += 5
+        # Core health state rewards (most important)
+        reward += self._get_health_state_reward()
         
-        # Treatment cell rewards
+        # Treatment appropriateness rewards
         new_pos_tuple = tuple(new_pos)
         if new_pos_tuple in self.grid_items:
             item_type = self.grid_items[new_pos_tuple]
-            reward += self._get_treatment_reward(item_type)
+            reward += self._get_treatment_appropriateness_reward(item_type)
         
-        # Distance-based reward
-        reward += self._get_distance_reward(new_pos)
+        # Time efficiency rewards
+        reward += self._get_urgency_reward(new_pos)
         
-        # Penalties for dangerous levels
-        if self.sugar_level < 50 or self.sugar_level > 250:
-            reward -= 20
-        elif self.sugar_level < 70 or self.sugar_level > 180:
-            reward -= 5
+        # Sugar level stability rewards
+        reward += self._get_stability_reward()
+        
+        # Critical safety penalties
+        reward += self._get_safety_penalties()
         
         return reward
     
-    def _get_treatment_reward(self, item_type):
-        """Get reward for choosing a specific treatment (+10 correct, -10 wrong)."""
-        if item_type == 'insulin':  # High dosage
-            if self.sugar_level > 150:
-                return 10  # Correct for high sugar
-            else:
-                return -10  # Wrong for normal/low sugar
-                
-        elif item_type == 'insuline':  # Low dosage
-            if 120 < self.sugar_level <= 150:
-                return 10  # Correct for moderately high sugar
-            else:
-                return -10  # Wrong for other levels
-                
-        elif item_type == 'stop':  # No dosage
-            if 80 <= self.sugar_level <= 120:
-                return 10  # Good to not interfere when normal
-            else:
-                return -10  # Should be treating
-                
-        elif item_type == 'fruits':  # Low sugar treatment
-            if self.sugar_level < 80:
-                return 10  # Correct for low sugar
-            else:
-                return -10  # Wrong for normal/high sugar
-                
-        elif item_type == 'nutrient':  # Medium sugar treatment
-            if 60 <= self.sugar_level <= 90:
-                return 10  # Good for mild low sugar
-            else:
-                return -10  # Wrong for other levels
-                
-        elif item_type == 'candy':  # High sugar treatment
-            if self.sugar_level < 60:
-                return 10  # Emergency treatment
-            else:
-                return -10  # Wrong for normal/high sugar
+    def _get_health_state_reward(self):
+        """Primary reward based on current health state quality."""
+        # Optimal range (80-120 mg/dL) - highest reward
+        if 80 <= self.sugar_level <= 120:
+            return 50  # High reward for maintaining good control
         
-        return 0
+        # Acceptable range (70-140 mg/dL) - moderate reward
+        elif 70 <= self.sugar_level <= 140:
+            return 20  # Good management
+        
+        # Mild concern ranges (60-70 or 140-180 mg/dL)
+        elif 60 <= self.sugar_level <= 180:
+            return 5  # Slight positive for not being dangerous
+        
+        # Warning ranges (50-60 or 180-250 mg/dL)
+        elif 50 <= self.sugar_level <= 250:
+            return -10  # Negative for poor control
+        
+        # Dangerous ranges (below 50 or above 250 mg/dL)
+        else:
+            return -50  # Heavy penalty for dangerous levels
+    
+    def _get_treatment_appropriateness_reward(self, item_type):
+        """Reward based on how appropriate the chosen treatment is."""
+        current_sugar = self.sugar_level
+        
+        # Calculate the expected effectiveness of this treatment
+        expected_effect = self.treatment_effects[item_type]
+        target_range_center = 100  # Ideal sugar level
+        
+        # Predict where sugar level would go with this treatment
+        predicted_level = current_sugar + (expected_effect * 2)  # Estimate full effect
+        
+        # Distance from target after treatment
+        distance_from_target_before = abs(current_sugar - target_range_center)
+        distance_from_target_after = abs(predicted_level - target_range_center)
+        
+        # Reward improvement in getting closer to target
+        improvement = distance_from_target_before - distance_from_target_after
+        
+        # Scale reward based on improvement
+        if improvement > 20:
+            return 30  # Excellent treatment choice
+        elif improvement > 10:
+            return 20  # Good treatment choice
+        elif improvement > 0:
+            return 10  # Mild improvement
+        elif improvement == 0:
+            return 0   # No change
+        else:
+            return -20  # Makes things worse
+    
+    def _get_urgency_reward(self, pos):
+        """Reward based on how quickly urgent situations are addressed."""
+        # Critical urgency - immediate treatment needed
+        if self.sugar_level < 60 or self.sugar_level > 200:
+            # Check if agent is moving toward appropriate treatment
+            if self.sugar_level < 60:  # Need sugar fast
+                sugar_positions = [(6, 6), (0, 3), (6, 3)]  # candy, fruits, nutrient
+                closest_dist = min([self._manhattan_distance(pos, spos) for spos in sugar_positions])
+                if closest_dist == 0:  # At treatment location
+                    return 25  # High reward for quick critical response
+                elif closest_dist <= 2:
+                    return 10  # Moving toward treatment
+                else:
+                    return -15  # Too slow for critical situation
+            
+            else:  # Need insulin fast (sugar > 200)
+                insulin_positions = [(0, 0), (0, 6)]  # insulin, insuline
+                closest_dist = min([self._manhattan_distance(pos, ipos) for ipos in insulin_positions])
+                if closest_dist == 0:
+                    return 25  # Quick critical response
+                elif closest_dist <= 2:
+                    return 10  # Moving toward treatment
+                else:
+                    return -15  # Too slow
+        
+        # Moderate urgency
+        elif self.sugar_level < 70 or self.sugar_level > 150:
+            return 5  # Small bonus for addressing moderate issues
+        
+        return 0  # No urgency bonus needed
+    
+    def _get_stability_reward(self):
+        """Reward for maintaining stable sugar levels over time."""
+        if len(self.sugar_history) < 3:
+            return 0
+        
+        # Look at recent sugar level changes
+        recent_levels = self.sugar_history[-3:]
+        
+        # Calculate variance (lower is better)
+        variance = np.var(recent_levels)
+        
+        # Reward stability
+        if variance < 25:  # Very stable
+            return 15
+        elif variance < 100:  # Moderately stable
+            return 8
+        elif variance < 400:  # Somewhat unstable
+            return 0
+        else:  # Very unstable
+            return -10
+    
+    def _get_safety_penalties(self):
+        """Heavy penalties for dangerous situations."""
+        penalty = 0
+        
+        # Extreme danger zones
+        if self.sugar_level < 40:
+            penalty -= 100  # Severe hypoglycemia - life threatening
+        elif self.sugar_level > 300:
+            penalty -= 100  # Severe hyperglycemia - life threatening
+        
+        # Extended time in dangerous ranges
+        if len(self.sugar_history) >= 5:
+            recent_dangerous = sum(1 for level in self.sugar_history[-5:] 
+                                 if level < 60 or level > 200)
+            if recent_dangerous >= 3:
+                penalty -= 30  # Extended time in danger zone
+        
+        return penalty
+    
+    def _get_episode_completion_reward(self):
+        """Calculate final reward based on overall episode performance."""
+        if len(self.sugar_history) < 5:
+            return 0
+        
+        # Calculate time spent in different ranges
+        total_steps = len(self.sugar_history)
+        optimal_time = sum(1 for level in self.sugar_history if 80 <= level <= 120)
+        good_time = sum(1 for level in self.sugar_history if 70 <= level <= 140)
+        dangerous_time = sum(1 for level in self.sugar_history if level < 60 or level > 200)
+        critical_time = sum(1 for level in self.sugar_history if level < 40 or level > 300)
+        
+        # Calculate percentages
+        optimal_pct = optimal_time / total_steps
+        good_pct = good_time / total_steps
+        dangerous_pct = dangerous_time / total_steps
+        critical_pct = critical_time / total_steps
+        
+        # Base completion reward
+        completion_reward = 0
+        
+        # Reward for time in optimal range
+        if optimal_pct > 0.7:
+            completion_reward += 100  # Excellent diabetes management
+        elif optimal_pct > 0.5:
+            completion_reward += 50   # Good management
+        elif optimal_pct > 0.3:
+            completion_reward += 20   # Fair management
+        
+        # Reward for staying in acceptable range
+        if good_pct > 0.8:
+            completion_reward += 50   # Very good overall control
+        elif good_pct > 0.6:
+            completion_reward += 25   # Good overall control
+        
+        # Penalties for dangerous time
+        if dangerous_pct > 0.3:
+            completion_reward -= 100  # Too much time in danger
+        elif dangerous_pct > 0.1:
+            completion_reward -= 50   # Some dangerous periods
+        
+        # Heavy penalty for critical situations
+        if critical_pct > 0.05:  # More than 5% in critical range
+            completion_reward -= 200  # Very poor management
+        
+        # Bonus for completing full 24-hour simulation
+        if self.simulation_time >= 23.5:  # Almost full day
+            completion_reward += 50   # Completion bonus
+        
+        return completion_reward
     
     def _get_distance_reward(self, pos):
         """Get reward based on distance to appropriate treatment."""
@@ -289,15 +436,32 @@ class DiabetesTreatmentEnv(gym.Env):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
     
     def _is_episode_done(self):
-        """Check if episode should end."""
-        # End if simulation time reaches 24 hours
+        """Check if episode should end with more sophisticated conditions."""
+        # End if simulation time reaches 24 hours (successful completion)
         if self.simulation_time >= 24:
             return True
-            
-        # End if sugar level is critically dangerous
-        if self.sugar_level < 40 or self.sugar_level > 300:
-            return True
-            
+        
+        # End if sugar level is life-threatening for extended period
+        if self.sugar_level < 30 or self.sugar_level > 350:
+            return True  # Immediate danger - emergency stop
+        
+        # End if sugar level has been critically dangerous for too long
+        if len(self.sugar_history) >= 3:
+            recent_critical = sum(1 for level in self.sugar_history[-3:] 
+                                if level < 40 or level > 300)
+            if recent_critical >= 3:
+                return True  # 3 consecutive critical readings
+        
+        # End if agent is stuck (no progress for too long)
+        if self.step_count > 20:  # After reasonable number of steps
+            # Check if sugar level management is completely failing
+            if len(self.sugar_history) >= 10:
+                recent_levels = self.sugar_history[-10:]
+                # If all recent levels are outside acceptable range
+                all_bad = all(level < 60 or level > 220 for level in recent_levels)
+                if all_bad:
+                    return True  # Complete management failure
+        
         return False
     
     def _get_observation(self):
@@ -482,7 +646,7 @@ class DiabetesTreatmentEnv(gym.Env):
         
         # Treatment grid - check if it's correct
         item_type = self.grid_items[pos_tuple]
-        return self._get_treatment_reward(item_type)
+        return self._get_treatment_appropriateness_reward(item_type)
     
     def _end_cycle_immediately(self):
         """End current cycle immediately and return to center."""
@@ -526,7 +690,7 @@ class DiabetesTreatmentEnv(gym.Env):
         
         # Calculate and apply reward for this ONE treatment only
         if pos_tuple in self.grid_items:
-            treatment_reward = self._get_treatment_reward(actual_treatment)
+            treatment_reward = self._get_treatment_appropriateness_reward(actual_treatment)
             self.current_cycle_reward = treatment_reward
             self.total_reward += treatment_reward
             
@@ -651,7 +815,13 @@ class DiabetesTreatmentEnv(gym.Env):
         if self.renderer is None:
             self.renderer = DiabetesRenderer(self)
         
-        return self.renderer.render()
+        # Call the renderer and check if we should quit
+        result = self.renderer.render()
+        if result is False:
+            return None  # Quit event received
+        
+        # Return the surface for GIF recording
+        return self.renderer.screen
     
     def close(self):
         """Close the environment and renderer."""
