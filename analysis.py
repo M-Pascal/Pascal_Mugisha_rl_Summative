@@ -284,17 +284,6 @@ class ModelPerformanceAnalyzer:
         print(f"  Results - Mean reward: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}")
         print(f"  Mean episode length: {np.mean(episode_lengths):.1f}")
         print(f"  Mean time in range: {np.mean(time_in_range_scores):.1f}%")
-            'sugar_stats': sugar_stats,
-            'time_in_range': time_in_range_scores,
-            'mean_reward': np.mean(episode_rewards),
-            'std_reward': np.std(episode_rewards),
-            'mean_length': np.mean(episode_lengths),
-            'mean_time_in_range': np.mean(time_in_range_scores)
-        }
-        
-        print(f"  Results - Mean reward: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}")
-        print(f"  Mean episode length: {np.mean(episode_lengths):.1f}")
-        print(f"  Mean time in range: {np.mean(time_in_range_scores):.1f}%")
     
     def predict_reinforce_action(self, model, obs):
         """Predict action using REINFORCE model."""
@@ -503,21 +492,21 @@ class ModelPerformanceAnalyzer:
         
         # Rank by mean reward
         sorted_by_reward = sorted(self.results.items(), key=lambda x: x[1]['mean_reward'], reverse=True)
-        print("\n🏆 Ranking by Mean Reward:")
+        print("\nRanking by Mean Reward:")
         for i, (alg, results) in enumerate(sorted_by_reward, 1):
             print(f"  {i}. {alg}: {results['mean_reward']:.2f}")
             rankings[alg] = rankings.get(alg, 0) + (len(sorted_by_reward) - i + 1)
         
         # Rank by time in range
         sorted_by_range = sorted(self.results.items(), key=lambda x: x[1]['mean_time_in_range'], reverse=True)
-        print("\n🎯 Ranking by Time in Target Range:")
+        print("\nRanking by Time in Target Range:")
         for i, (alg, results) in enumerate(sorted_by_range, 1):
             print(f"  {i}. {alg}: {results['mean_time_in_range']:.1f}%")
             rankings[alg] = rankings.get(alg, 0) + (len(sorted_by_range) - i + 1)
         
         # Overall ranking
         overall_ranking = sorted(rankings.items(), key=lambda x: x[1], reverse=True)
-        print(f"\n🥇 Overall Ranking (Combined Score):")
+        print(f"\nOverall Ranking (Combined Score):")
         for i, (alg, score) in enumerate(overall_ranking, 1):
             print(f"  {i}. {alg} (Score: {score})")
     
